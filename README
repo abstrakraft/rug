@@ -1,0 +1,17 @@
+Workflow:
+gitri init url dir version
+
+Nomenclature:
+repository: a git repository
+project: A collection of git repos in a specified layout.  A project is contained in a manifest repo.
+revset: A set of revisions of the repositories in a project.  They are named by the branch of the manifest repo in which they are found.
+
+Commands:
+init: checkout a new gitri project
+reset: reset a subset of repos
+revset: create and manipulate revsets
+merge: merge repos of other revsets into current one
+push: push repo changes to servers
+
+TODO:
+print git output
