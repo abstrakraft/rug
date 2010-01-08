@@ -1,3 +1,4 @@
+#!/usr/bin/python
 import os
 import shutil
 import sys
@@ -101,8 +102,10 @@ class Project(object):
 	def origin(self):
 		return 'origin'
 
-	def sync(self):
-		for r in self.repos:
+	def sync(self, repos = None):
+		if repos is None:
+			repos = self.repos
+		for r in repos:
 			path = os.path.abspath(os.path.join(self.dir, r['path']))
 			print r['name']
 			gitri_branch = 'gitri/%s/%s' % (self.origin(), self.revset())
@@ -116,26 +119,37 @@ class Project(object):
 				#Make sure we're on the right branch
 				if repo.head() != gitri_branch:
 					print '%s has changed branches and cannot be safely synced. Skipping this repo.' % r['name']
+				#Check if there are no changes
+				elif repo.rev_parse(repo.head()) == repo.rev_parse(remote_branch):
+					print 'no remote changes, no local changes'
 				#Fast-Forward if we can
 				elif repo.can_fastforward(remote_branch):
+					print 'fast-forward'
 					repo.merge(remote_branch)
+					repo.update_ref(bookmark_branch, 'HEAD')
 				#otherwise rebase local work
 				elif repo.is_descendant(bookmark_branch):
 					if repo.dirty():
 						print '%s has local changes and cannot be rebased. Skipping this repo.' % r['name']
-					repo.rebase(bookmark_branch, onto=remote_branch)
+					elif:
+						print 'rebase'
+						repo.rebase(bookmark_branch, onto=remote_branch)
+						repo.update_ref(bookmark_branch, remote_branch)
 			else:
 				url = self.remotes[r['remote']]['fetch'] + '/' + r['name']
 				if r.has_key('revision'):
 					repo = git.Repo.clone(url, dir=path, remote=r['remote'], rev=r['revision'], local_branch=gitri_branch)
 				else:
 					repo = git.Repo.clone(url, dir=path, remote=r['remote'], local_branch=gitri_branch)
+				repo.update_ref(bookmark_branch, 'HEAD')
 
-			repo.update_ref(bookmark_branch, 'HEAD')
+	def reset(self, repos = None):
+		
 
 gitri_commands = {
 	'init': (Project.init, False),
 	'sync': (Project.sync, True),
+	'reset': (Project.reset, True),
 	}
 
 if __name__ == '__main__':

@@ -12,7 +12,7 @@ class InvalidRepoError(GitError):
 
 def shell_cmd(cmd, args, cwd=None, raise_errors=True, print_output=False):
 	if print_output:
-		stdout = subprocess.PIPE
+		stdout = None
 	else:
 		stdout = subprocess.PIPE
 
@@ -26,9 +26,10 @@ def shell_cmd(cmd, args, cwd=None, raise_errors=True, print_output=False):
 	if raise_errors:
 		if ret != 0:
 			raise GitError('%s %s: %s' % (cmd, ' '.join(args), err))
+		elif print_output:
+			return
 		else:
-			if out:
-				return out.rstrip()
+			return out.rstrip()
 	else:
 		return (ret, out, err)
 
@@ -48,7 +49,7 @@ class Repo(object):
 	def valid_repo(cls, dir):
 		#return not shell_cmd(GIT, ['remote', 'show'], cwd)[0]
 		return os.path.exists(os.path.join(dir, GIT_DIR)) or \
-			(shell_cmd(GIT, ['config', 'core.bare'], cwd=dir, raise_errors=False)[1].lower() == 'true')
+			(os.path.exists(dir) and (shell_cmd(GIT, ['config', 'core.bare'], cwd=dir, raise_errors=False)[1].lower() == 'true'))
 
 	@classmethod
 	def clone(cls, url, dir=None, remote='origin', rev=None, local_branch=None):
@@ -125,7 +126,7 @@ class Repo(object):
 			args.append('--ignore-submodules')
 
 		#TODO: doesn't account for untracked files (should it?)
-		return not len(self.git_cmd(args)) == 0
+		return not (len(self.git_cmd(args)) == 0)
 
 	def remote_list(self):
 		return self.git_cmd(['remote', 'show']).split()
@@ -137,7 +138,7 @@ class Repo(object):
 		self.git_cmd(['remote', 'set-head', remote, '-a'])
 
 	def fetch(self, remote=None):
-		args = ['fetch']
+		args = ['fetch', '-v']
 		if remote:
 			args.append(remote)
 
@@ -169,12 +170,13 @@ class Repo(object):
 
 	#Branch combination operations
 	def merge(self, merge_head):
-		return self.git_cmd(['merge', merge_head])
+		return self.git_cmd(['merge', merge_head], print_output=True)
 
 	def rebase(self, base, onto=None):
-		args = ['rebase', 'base']
+		args = ['rebase']
 		if onto:
-			args.extend(['-o', onto])
+			args.extend(['--onto', onto])
+		args.append(base)
 
 		self.git_cmd(args)
 
