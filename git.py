@@ -52,7 +52,10 @@ class Repo(object):
 			(os.path.exists(dir) and (shell_cmd(GIT, ['config', 'core.bare'], cwd=dir, raise_errors=False)[1].lower() == 'true'))
 
 	@classmethod
-	def clone(cls, url, dir=None, remote='origin', rev=None, local_branch=None):
+	def clone(cls, url, dir=None, remote=None, rev=None, local_branch=None):
+		if remote is None:
+			remote = 'origin'
+
 		#A manual clone may be necessary to avoid git's check for an empty directory.  Currently using another workaround.
 		#method = 'standard'
 		method = 'manual'
@@ -163,6 +166,24 @@ class Repo(object):
 		if force:
 			args.append('-f')
 
+		self.git_cmd(args)
+
+	SOFT = 0
+	MIXED = 1
+	HARD = 2
+	def reset(self, branch, mode=None):
+		args = ['reset']
+		if mode is not None:
+			if mode == 0:
+				args.append('--soft')
+			elif mode == 1:
+				args.append('--mixed')
+			elif mode == 2:
+				args.append('--hard')
+			else:
+				#TODO: error
+				pass
+		args.append(branch)
 		self.git_cmd(args)
 
 	def update_ref(self, ref, newval):

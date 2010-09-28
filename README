@@ -1,17 +1,48 @@
-Workflow:
-gitri init url dir version
+Workflow: Init
+gitri init <url> [dir] [version]
+
+gitri checkout <revset>
+
+Workflow: Track server changes
+gitri update
+
+Workflow: Create a new revset to work a ticket
+gitri revset <new_revset> [source_revset]
+	(creates a new branch in manifest)
+[develop]
+[use git to commit locally, change branches, etc.]
+gitri add [-h|--hash|-b|--branch] <repo names>
+	(update local manifest file)
+gitri push
+	(commit local manifest file, push all repo branches and manifest branch)
 
 Nomenclature:
-repository: a git repository
-project: A collection of git repos in a specified layout.  A project is contained in a manifest repo.
-revset: A set of revisions of the repositories in a project.  They are named by the branch of the manifest repo in which they are found.
+repository: a git (or other VCS) repository.  repo is accepted shorthand.
+project: A collection of repos in a specified layout.  A project is defined by a manifest repo.
+revset: A set of revisions of the repositories in a project.  They are named by the branch of the manifest repo in which they are stored.
 
-Commands:
+Porcelain Commands:
 init: checkout a new gitri project
-reset: reset a subset of repos
-revset: create and manipulate revsets
+update: update all repos with upstream updates (fetch followed by ?resetish command?)
+checkout: checkout another revset
+revset: create a new revset
+add: add a repos branch or commit to the local manifest file
+push: push repo changes to servers (commit (manifest) followed by repo-push and manifest-push)
+status: print status of all repos (--deep option for internal status)
+
+Plumbing Commands:
+fetch:
+commit:
+
+Future Commands:
+reset: reset a subset of repos to the proper gitri branch
 merge: merge repos of other revsets into current one
-push: push repo changes to servers
 
 TODO:
 print git output
+
+Project Layout:
+The .gitri folder in the main repo contains the manifest repo.
+On init, for each project in the repo, a branch called gitri/<revset>/<remote>/<branch> is created and checked out.
+A more detailed branch name is required because there may be branches with the same name from different revsets, and remotes.
+Current philosophy is that development from different revsets with the same branches, should be separate.
