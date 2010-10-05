@@ -31,8 +31,8 @@ push: push repo changes to servers (commit (manifest) followed by repo-push and 
 status: print status of all repos (--deep option for internal status)
 
 Plumbing Commands:
-fetch:
-commit:
+fetch: fetch all repos
+commit: commit everything necessary to checkout another revset, then check out the current one again, and get the same "stuff"
 
 Future Commands:
 reset: reset a subset of repos to the proper gitri branch
@@ -43,6 +43,26 @@ print git output
 
 Project Layout:
 The .gitri folder in the main repo contains the manifest repo.
-On init, for each project in the repo, a branch called gitri/<revset>/<remote>/<branch> is created and checked out.
+On init, for each project in the repo, a branch called gitri/<revset>/<remote>/<branch> is created and checked out.  This branch is
+known as the local gitri branch.
 A more detailed branch name is required because there may be branches with the same name from different revsets, and remotes.
 Current philosophy is that development from different revsets with the same branches, should be separate.
+
+Branches:
+Checking out a revset for the first time creates the local gitri branch (see above for naming convention).  Note that
+two revsets that point to the same branch will have two local copies of that branch - this is by design.  In this way,
+we implicitly maintain (committed, at least) local state of revsets between across checkouts.
+Checking out subsequent times leaves the current branch and checks out the local gitri branch.  Checkout options are passed straight
+through to git.
+A message should be printed indicating the last time the revset was fetched from the server, and any local changes to the revset.
+
+Adding a repo records that branch name in the manifest.xml file.  Note that these changes are not maintained across revset checkouts, i.e.
+adding, then checking out a revset (even the same one), then checking out the original revset reverts the branch to the local git branch.
+
+Commit creates the proper local gitri branch if the user is on another branch (see naming convention above - users may check out other
+branches that are suffixes of that naming convention, and the correctly named branch will be created.  Existing gitri branches will be
+overwritten if they are ancestors of the new branch, otherwise an error will be thrown, or overriden with -f).  Changes to manifest.xml
+are committed.
+
+Push pushes all local branches, including the manifest branch (revset) to the appropriate server.
+

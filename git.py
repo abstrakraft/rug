@@ -1,5 +1,6 @@
 import os.path
 import subprocess
+import string
 
 GIT='git'
 GIT_DIR='.git'
@@ -8,6 +9,9 @@ class GitError(StandardError):
 	pass
 
 class InvalidRepoError(GitError):
+	pass
+
+class UnknownRevisionError(GitError):
 	pass
 
 def shell_cmd(cmd, args, cwd=None, raise_errors=True, print_output=False):
@@ -82,7 +86,7 @@ class Repo(object):
 			if rev:
 				remote_branch = '%s/%s' % (remote, rev)
 
-			if rev and ('%s/%s' % (remote, rev) not in repo.branch_list(all=True)):
+			if rev and not repo.valid_ref(remote_branch, include_sha=False):
 				#rev must be a commit ID or error
 				repo.checkout(rev)
 			else:
@@ -154,6 +158,10 @@ class Repo(object):
 
 		return self.git_cmd(args).split()
 
+	def ref_list(self):
+		args = ['show-ref']
+		return [r.split()[1][5:] for r in self.git_cmd(args).split('\n')]
+
 	def branch_create(self, dst, src=None):
 		args = ['branch', dst]
 		if src:
@@ -203,7 +211,23 @@ class Repo(object):
 
 	#Query functions
 	def rev_parse(self, rev):
-		return self.git_cmd(['rev-parse', rev])
+		try:
+			return self.git_cmd(['rev-parse', rev])
+		except GitError as e:
+			if e.args[0].find('unknown revision') > -1:
+				raise UnknownRevisionError('Unknown revision %s' % rev)
+			else:
+				raise GitError
+
+	def valid_ref(self, ref, include_sha=True):
+		if include_sha:
+			try:
+				self.rev_parse(ref)
+				return True
+			except UnknownRevisionError:
+				return False
+		else:
+			return ref in self.ref_list()
 
 	def merge_base(self, rev1, rev2):
 		return self.git_cmd(['merge-base', rev1, rev2])
