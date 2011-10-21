@@ -119,13 +119,13 @@ class Project(object):
 	def checkout(self, optlist, revset=None):
 		'check out a revset'
 
-		self.read_manifest()
-
 		#Checkout manifest repo
 		if revset is None:
 			revset = self.revset()
 		#Always throw away local gitri changes - uncommitted changes to the manifest.xml file are lost
 		self.manifest_repo.checkout(revset, force=True)
+
+		self.read_manifest()
 
 		for r in self.repos:
 			path = os.path.abspath(os.path.join(self.dir, r['path']))
@@ -133,21 +133,35 @@ class Project(object):
 			gitri_branch = 'gitri/%s/%s/%s' % (self.revset(), r['remote'], r.get('revision', 'HEAD'))
 			bookmark_branch = 'refs/bookmarks/%s/%s/%s' % (self.revset(), r['remote'], r.get('revision', 'HEAD'))
 
+			url = self.remotes[r['remote']]['fetch'] + '/' + r['name']
+
 			#if the repo doesn't exist, clone it
 			if not git.Repo.valid_repo(path):
-				url = self.remotes[r['remote']]['fetch'] + '/' + r['name']
-				repo = git.Repo.clone(url, dir=path, remote=r['remote'], rev=r.get('revision', 'HEAD'), local_branch=gitri_branch)
+				repo = git.Repo.clone(url, dir=path, remote=r['remote'], rev=r.get('revision'))
 				repo.update_ref(bookmark_branch, 'HEAD')
 			else:
 				repo = git.Repo(path)
 
-			#Verify remotes exist
+			#Verify remotes
+			if r['remote'] not in repo.remote_list():
+				repo.remote_add(r['remote'], url)
+			else:
+				#Currently easier to just set the remote URL rather than check and set if different
+				repo.remote_set_url(r['remote'], url)
+
+			#Fetch from remote
+			#TODO:decide if we should always do this here.  Sometimes have to, since we may not have
+			#seen this remote before
+			repo.fetch(r['remote'])
 
 			#if the gitri branch or bookmark ref doesn't exist, create it
 			if not repo.valid_ref(gitri_branch):
-				repo.branch_create(gitri_branch, '%s/%s' % (r['remote'], r.get('revision', 'HEAD')))
+				remote_branch = '%s/%s' % (r['remote'], r.get('revision', 'HEAD'))
+				if not repo.valid_ref(remote_branch):
+					remote_branch = r['revision']
+				repo.branch_create(gitri_branch, remote_branch)
 			if not repo.valid_ref(bookmark_branch):
-				repo.update_ref(bookmark_branch, '%s/%s' % (r['remote'], r.get('revision', 'HEAD')))
+				repo.update_ref(bookmark_branch, remote_branch)
 
 			#checkout the gitri branch
 			repo.checkout(gitri_branch)

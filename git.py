@@ -144,6 +144,9 @@ class Repo(object):
 	def remote_set_head(self, remote):
 		self.git_cmd(['remote', 'set-head', remote, '-a'])
 
+	def remote_set_url(self, remote, url):
+		self.git_cmd(['remote','set-url', remote, url])
+
 	def fetch(self, remote=None):
 		args = ['fetch', '-v']
 		if remote:
