@@ -60,7 +60,8 @@ class Repo(object):
 		if remote is None:
 			remote = 'origin'
 
-		#A manual clone may be necessary to avoid git's check for an empty directory.  Currently using another workaround.
+		#A manual clone is necessary to avoid git's check for an empty directory.
+		#Really need to find another method - manual clone is a maintenance PITA
 		#method = 'standard'
 		method = 'manual'
 		if method == 'standard':
@@ -83,14 +84,12 @@ class Repo(object):
 			repo.fetch(remote)
 			repo.remote_set_head(remote)
 
-			if rev:
-				remote_branch = '%s/%s' % (remote, rev)
-
-			if rev and not repo.valid_ref(remote_branch, include_sha=False):
-				#rev must be a commit ID or error
+			if rev and repo.valid_ref(rev):
+				#rev is a Commit ID
 				repo.checkout(rev)
 			else:
 				if rev:
+					remote_branch = '%s/%s' % (remote, rev)
 					if not local_branch:
 						local_branch = rev
 				else:

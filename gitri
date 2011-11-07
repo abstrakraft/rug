@@ -82,15 +82,17 @@ class Project(object):
 		raise InvalidProjectError('not a valid gitri project')
 
 	@classmethod
-	def init(cls, optlist, url, dir=None, revset=None):
-		'initialize a new gitri repository'
+	def clone(cls, optlist, url, dir=None, revset=None):
+		'clone an existing gitri repository'
 
 		optdict = {}
 		optdict.update(optlist)
 
 		if dir == None:
-			#TODO: come up with a better default name, if possible
-			dir = os.path.splitext(os.path.basename(url))[0]
+			basename = os.path.basename(url)
+			if len(basename) == 0:
+				basename = os.path.basename(url[:-1])
+			dir = os.path.splitext(basename)[0]
 		dir = os.path.abspath(dir)
 
 		if os.path.exists(dir):
@@ -254,7 +256,7 @@ class Project(object):
 	#		r.checkout(gitri_branch, mode = mode)
 
 gitri_commands = {
-	'init': (Project.init, False, ''),
+	'clone': (Project.clone, False, ''),
 	'checkout': (Project.checkout, True, ''),
 	'fetch': (Project.fetch, True, ''),
 	'update': (Project.update, True, ''),
