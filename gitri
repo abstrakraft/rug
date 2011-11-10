@@ -74,7 +74,7 @@ class Project(object):
 			try:
 				return cls(head)
 			except InvalidProjectError:
-				if head == '/':
+				if head == os.path.sep:
 					head = None
 				else:
 					(head, tail) = os.path.split(head)
@@ -138,6 +138,29 @@ class Project(object):
 		'return the name of the current revset'
 		return self.manifest_repo.head()
 
+	def status(self, optlist):
+		self.read_manifest()
+
+		stat = []
+		for r in self.repos:
+			abs_path = os.path.abspath(os.path.join(self.dir, r['path']))
+			if git.Repo.valid_repo(abs_path):
+				repo = git.Repo(abs_path)
+				r_stat = repo.status(porcelain=True)
+				if r_stat != '':
+					if r['path'] == '.':
+						prefix = ''
+					else:
+						prefix = r['path']
+						if prefix[-1] != os.path.sep:
+							prefix += os.path.sep
+					stat.extend([s[:3]+prefix+s[3:] for s in r_stat.split('\n')])
+			else:
+				stat.append(' D ' + r['path'])
+
+		for s in stat:
+			print s
+
 	def checkout(self, optlist, revset=None):
 		'check out a revset'
 
@@ -175,7 +198,6 @@ class Project(object):
 			branches = self.get_branches(repo, r)
 
 			#create gitri and bookmark branches if they don't exist
-			print branches
 			if not repo.valid_ref(branches['gitri']):
 				repo.branch_create(branches['gitri'], branches['remote'])
 			if not repo.valid_ref(branches['bookmark']):
@@ -248,7 +270,7 @@ class Project(object):
 					print repo.head(), branches['gitri']
 					print '%s has changed branches and cannot be safely updated. Skipping this repo.' % r['name']
 				else:
-					#Weird stuff has happened - right branch, wrong relationship to other bookmark
+					#Weird stuff has happened - right branch, wrong relationship to bookmark
 					print 'The current branch in %s has been in altered in an unusal way and must be manually updated.' % r['name']
 			else:
 				url = self.remotes[r['remote']]['fetch'] + '/' + r['name']
@@ -274,11 +296,13 @@ class Project(object):
 	#	for r in repos:
 	#		r.checkout(gitri_branch, mode = mode)
 
+#(function, is_instance_func, options)
 gitri_commands = {
 	'clone': (Project.clone, False, ''),
 	'checkout': (Project.checkout, True, ''),
 	'fetch': (Project.fetch, True, ''),
 	'update': (Project.update, True, ''),
+	'status': (Project.status, True, ''),
 	#'reset': (Project.reset, True, ['soft', 'mixed', 'hard']),
 	}
 

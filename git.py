@@ -217,6 +217,14 @@ class Repo(object):
 		return self.git_cmd(args, raise_errors=False, print_output=False)
 
 	#Query functions
+	def status(self, porcelain=True):
+		#TODO: parse status output, or leave as text?
+		args = ['status']
+		if porcelain:
+			args.append('--porcelain')
+
+		return self.git_cmd(args, raise_errors=True, print_output=False)
+
 	def rev_parse(self, rev):
 		try:
 			return self.git_cmd(['rev-parse', rev])
