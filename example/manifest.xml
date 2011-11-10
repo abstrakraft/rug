@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<manifest>
+  <remote name="localhost" fetch="/git/"/>
+  <repo path="test2" name="test2" remote="localhost"/>
+  <default revision="master" remote="localhost"/>
+  <repo path="." name="test1"/>
+  <repo path="test3" name="test3" revision="85797c"/>
+</manifest>
