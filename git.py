@@ -97,7 +97,6 @@ class Repo(object):
 					if not local_branch:
 						#remove refs/remotes/<origin>/ for the local version
 						local_branch = '/'.join(remote_branch.split('/')[3:])
-				print remote_branch, local_branch
 				#Strange things can happen here if local_branch is 'master', since git considers
 				#the repo to be on branch master, although it doesn't technically exist yet.
 				#'checkout -b' doesn't quite to know what to make of this situation, so we branch
@@ -123,6 +122,8 @@ class Repo(object):
 				parts = ref.split('/')
 				if (len(parts) > 2) and (parts[0] == 'refs') and ((parts[1] == 'heads') or (parts[1] == 'tags')):
 					ref = '/'.join(parts[2:])
+		else:
+			ref = ref[:-1]
 
 		return ref
 
@@ -153,6 +154,7 @@ class Repo(object):
 
 		self.git_cmd(args, print_output=True)
 
+	#TODO: doesn't work
 	def branch_list(self, all=False):
 		args = ['branch']
 		if all:
@@ -200,8 +202,11 @@ class Repo(object):
 		self.git_cmd(['update-ref', ref, newval])
 
 	#Branch combination operations
+	#these commands do not currently raise errors
+	#TODO:differentiate between errors and conflicts, act accordingly
+
 	def merge(self, merge_head):
-		return self.git_cmd(['merge', merge_head], print_output=True)
+		return self.git_cmd(['merge', merge_head], raise_errors=False, print_output=False)
 
 	def rebase(self, base, onto=None):
 		args = ['rebase']
@@ -209,7 +214,7 @@ class Repo(object):
 			args.extend(['--onto', onto])
 		args.append(base)
 
-		self.git_cmd(args)
+		return self.git_cmd(args, raise_errors=False, print_output=False)
 
 	#Query functions
 	def rev_parse(self, rev):
@@ -229,7 +234,17 @@ class Repo(object):
 			except UnknownRevisionError:
 				return False
 		else:
-			return ref in self.ref_list()
+			#TODO: got to be a better way
+			#there is: use show to show the ref, parse the first word of the response
+			#(should be 'commit').  If !include_sha, verify !self.valid_sha(ref)
+			refs = self.ref_list()
+			return (ref in refs) or (('heads/' + ref) in refs) or \
+				(('tags/' + ref) in refs) or (('remotes/' + ref) in refs)
+
+	def valid_sha(self, ref):
+		#TODO: got to be a better way
+		#There is: check .git/objects/xx/xxxxxx..., verify that it's a 'commit' with show
+		return (not self.valid_ref(ref, False)) and self.valid_ref(ref, True)
 
 	def merge_base(self, rev1, rev2):
 		return self.git_cmd(['merge-base', rev1, rev2])

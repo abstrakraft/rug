@@ -1,0 +1,8 @@
+1. checkout manifest revset
+2. reread manifest
+3. for each repo in manifest
+	A. if repo doesn't exist, clone it
+	B. verify remotes
+	C. fetch from remote (maybe not?)
+	D. checkout branches that don't exist
+	E. checkout gitri branch

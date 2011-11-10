@@ -1,0 +1,5 @@
+1. calculate directory
+2. verify directory doesn't exist
+3. clone manifest into gitri directory
+4. verify valid manifest
+5. checkout revset

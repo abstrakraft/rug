@@ -47,7 +47,7 @@ merge: merge repos of other revsets into current one
 
 Project Layout:
 The .gitri folder in the main repo contains the manifest repo.
-####Revise this sentence! (Once I figure out how the hell this is going to work)###
+####Revise this sentence! (Once I figure out how this is going to work)###
 On init, for each project in the repo, a branch called gitri/<project_remote>/<revset>/<remote>/<branch> is created and checked out.  This branch is
 known as the local gitri branch.
 ####
@@ -78,4 +78,3 @@ Some loose design guidelines:
 1. Follow git when it makes sense.
 2. Similarly, and important enough to state explicitly, don't follow git when it doesn't make sense.  Whether because git itself doesn't make sense, or because the design parameter in question simply doesn't map well to projects, doesn't matter.
 3. Modifying repositores (committing, changing branches) requires (for now) knowledge of the underlying version control software (git).  However, a user should be able to clone a project and checkout various revsets, ALWAYS getting the correct thing (I'm referring to the quagmire that is fully-qualified branch names here), without any knowledge of the underlying vcs's.
-4. ...I'm sure there's more.

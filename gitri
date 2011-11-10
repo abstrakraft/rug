@@ -85,9 +85,7 @@ class Project(object):
 	def clone(cls, optlist, url, dir=None, revset=None):
 		'clone an existing gitri repository'
 
-		optdict = {}
-		optdict.update(optlist)
-
+		#calculate directory
 		if dir == None:
 			basename = os.path.basename(url)
 			if len(basename) == 0:
@@ -95,15 +93,19 @@ class Project(object):
 			dir = os.path.splitext(basename)[0]
 		dir = os.path.abspath(dir)
 
+		#verify directory doesn't exist
 		if os.path.exists(dir):
 			raise GitriError('Directory already exists')
 
+		#clone manifest repo into gitri directory
 		git.Repo.clone(url, dir=os.path.join(dir, GITRI_DIR, 'manifest'), rev=revset)
 
+		#verify valid manifest
 		manifest_src = os.path.join(dir, GITRI_DIR, 'manifest', 'manifest.xml')
 		if not os.path.exists(manifest_src):
 			raise GitriError('invalid manifest repo: no manifest.xml')
 
+		#checkout revset
 		p = cls(dir)
 		p.checkout({})
 
@@ -114,6 +116,24 @@ class Project(object):
 		return git.Repo.valid_repo(manifest_dir) and \
 			os.path.exists(os.path.join(manifest_dir, 'manifest.xml'))
 
+	def get_branches(self, repo, repo_conf):
+		#gitri_branch = 'gitri/%s/%s/%s' % (self.revset(), r['remote'], r.get('revision', 'HEAD'))
+		#bookmark_branch = 'refs/bookmarks/%s/%s/%s' % (self.revset(), r['remote'], r.get('revision', 'HEAD'))
+		revision = repo_conf.get('revision', 'HEAD')
+		if revision == 'HEAD':
+			start = len('refs/remotes/%s/' % repo_conf['remote'])
+			revision = repo.symbolic_ref('refs/remotes/%s/HEAD' % repo_conf['remote'])[start:]
+		ret = {}
+		ret['gitri'] = revision
+		if repo.valid_sha(revision):
+			ret['bookmark'] = revision
+			ret['remote'] = revision
+		else:
+			ret['bookmark'] = 'refs/gitri/%s/%s/%s' % (self.revset(), repo_conf['remote'], revision)
+			ret['remote'] = '%s/%s' % (repo_conf['remote'], revision)
+
+		return ret
+
 	def revset(self):
 		'return the name of the current revset'
 		return self.manifest_repo.head()
@@ -121,26 +141,22 @@ class Project(object):
 	def checkout(self, optlist, revset=None):
 		'check out a revset'
 
-		#Checkout manifest repo
+		#Checkout manifest manifest
 		if revset is None:
 			revset = self.revset()
 		#Always throw away local gitri changes - uncommitted changes to the manifest.xml file are lost
 		self.manifest_repo.checkout(revset, force=True)
 
+		#reread manifest
 		self.read_manifest()
 
 		for r in self.repos:
 			path = os.path.abspath(os.path.join(self.dir, r['path']))
-			print r['name']
-			gitri_branch = 'gitri/%s/%s/%s' % (self.revset(), r['remote'], r.get('revision', 'HEAD'))
-			bookmark_branch = 'refs/bookmarks/%s/%s/%s' % (self.revset(), r['remote'], r.get('revision', 'HEAD'))
-
 			url = self.remotes[r['remote']]['fetch'] + '/' + r['name']
 
 			#if the repo doesn't exist, clone it
 			if not git.Repo.valid_repo(path):
 				repo = git.Repo.clone(url, dir=path, remote=r['remote'], rev=r.get('revision'))
-				repo.update_ref(bookmark_branch, 'HEAD')
 			else:
 				repo = git.Repo(path)
 
@@ -156,17 +172,17 @@ class Project(object):
 			#seen this remote before
 			repo.fetch(r['remote'])
 
-			#if the gitri branch or bookmark ref doesn't exist, create it
-			if not repo.valid_ref(gitri_branch):
-				remote_branch = '%s/%s' % (r['remote'], r.get('revision', 'HEAD'))
-				if not repo.valid_ref(remote_branch):
-					remote_branch = r['revision']
-				repo.branch_create(gitri_branch, remote_branch)
-			if not repo.valid_ref(bookmark_branch):
-				repo.update_ref(bookmark_branch, remote_branch)
+			branches = self.get_branches(repo, r)
+
+			#create gitri and bookmark branches if they don't exist
+			print branches
+			if not repo.valid_ref(branches['gitri']):
+				repo.branch_create(branches['gitri'], branches['remote'])
+			if not repo.valid_ref(branches['bookmark']):
+				repo.update_ref(branches['bookmark'], branches['remote'])
 
 			#checkout the gitri branch
-			repo.checkout(gitri_branch)
+			repo.checkout(branches['gitri'])
 
 	def fetch(self, optlist, repos=None):
 		self.read_manifest()
@@ -181,7 +197,6 @@ class Project(object):
 
 		for r in repos:
 			path = os.path.abspath(os.path.join(self.dir, r['path']))
-			print r['name']
 			if git.Repo.valid_repo(path):
 				repo = git.Repo(path)
 				repo.fetch(r['remote'])
@@ -196,48 +211,52 @@ class Project(object):
 			#TODO: turn list of strings into repos
 			pass
 
+		#TODO:fetch?
+
 		#TODO:update manifest
 
 		for r in repos:
 			path = os.path.abspath(os.path.join(self.dir, r['path']))
-			print r['name']
-			gitri_branch = 'gitri/%s/%s/%s' % (self.revset(), r['remote'], r['revision'])
-			bookmark_branch = 'refs/bookmarks/%s/%s/%s' % (self.revset(), r['remote'], r['revision'])
 
 			if git.Repo.valid_repo(path):
 				repo = git.Repo(path)
-				#repo.fetch(r['remote'])
-				#repo.remote_set_head(r['remote'])
-				remote_branch = '%s/%s' % (r['remote'], r.get('revision', 'HEAD'))
+				branches = self.get_branches(repo, r)
 				#Check if there are no changes
-				if repo.rev_parse(repo.head()) == repo.rev_parse(remote_branch):
-					print 'no remote changes, no local changes'
+				if repo.rev_parse(repo.head()) == repo.rev_parse(branches['remote']):
+					print '%s is up to date with upstream repo: no change' % r['name']
+				elif repo.is_descendant(branches['remote']):
+					print '%s is ahead of upstream repo: no change' % r['name']
 				#Fast-Forward if we can
-				elif repo.can_fastforward(remote_branch):
-					print 'fast-forward'
-					repo.merge(remote_branch)
-					repo.update_ref(bookmark_branch, 'HEAD')
+				elif repo.can_fastforward(branches['remote']):
+					print '%s is being fast-forward to upstream repo' % r['name']
+					repo.merge(branches['remote'])
+					repo.update_ref(branches['bookmark'], 'HEAD')
 				#otherwise rebase local work
-				elif repo.is_descendant(bookmark_branch):
+				elif repo.is_descendant(branches['bookmark']):
 					if repo.dirty():
 						#TODO: option to stash, rebase, then reapply?
-						print '%s has local changes and cannot be rebased. Skipping this repo.' % r['name']
+						print '%s has local uncommitted changes and cannot be rebased. Skipping this repo.' % r['name']
 					else:
-						print 'rebase'
-						repo.rebase(bookmark_branch, onto=remote_branch)
-						repo.update_ref(bookmark_branch, remote_branch)
+						print '%s is being rebased onto upstream repo' % r['name']
+						[ret,out,err] = repo.rebase(branches['bookmark'], onto=branches['remote'])
+						if ret:
+							print out
+						else:
+							repo.update_ref(branches['bookmark'], branches['remote'])
 				#Fail
-				elif repo.head() != gitri_branch:
+				elif repo.head() != branches['gitri']:
+					print repo.head(), branches['gitri']
 					print '%s has changed branches and cannot be safely updated. Skipping this repo.' % r['name']
 				else:
+					#Weird stuff has happened - right branch, wrong relationship to other bookmark
 					print 'The current branch in %s has been in altered in an unusal way and must be manually updated.' % r['name']
 			else:
 				url = self.remotes[r['remote']]['fetch'] + '/' + r['name']
 				if r.has_key('revision'):
-					repo = git.Repo.clone(url, dir=path, remote=r['remote'], rev=r['revision'], local_branch=gitri_branch)
+					repo = git.Repo.clone(url, dir=path, remote=r['remote'], rev=r['revision'], local_branch=branches['gitri'])
 				else:
-					repo = git.Repo.clone(url, dir=path, remote=r['remote'], local_branch=gitri_branch)
-				repo.update_ref(bookmark_branch, 'HEAD')
+					repo = git.Repo.clone(url, dir=path, remote=r['remote'], local_branch=branches['gitri'])
+				repo.update_ref(branches['bookmark'], 'HEAD')
 
 	#TODO: define precisely what this should do
 	#def reset(self, optlist=[], repos=None):
