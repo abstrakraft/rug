@@ -152,7 +152,7 @@ class Repo(object):
 		if remote:
 			args.append(remote)
 
-		self.git_cmd(args, print_output=True)
+		return self.git_cmd(args)
 
 	#TODO: doesn't work
 	def branch_list(self, all=False):

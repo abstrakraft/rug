@@ -14,9 +14,12 @@ def main():
 		cmd = gitri_commands[sys.argv[1]]
 		[optlist, args] = getopt.gnu_getopt(sys.argv[2:], cmd[2])
 		if cmd[1]:
-			cmd[0](Project.find_project(), optlist, *args)
+			ret = cmd[0](Project.find_project(), optlist, *args)
 		else:
-			cmd[0](optlist, *args)
+			ret = cmd[0](optlist, *args)
+
+		if ret:
+			print ret
 
 class GitriError(StandardError):
 	pass
@@ -82,8 +85,11 @@ class Project(object):
 		raise InvalidProjectError('not a valid gitri project')
 
 	@classmethod
-	def clone(cls, optlist, url, dir=None, revset=None):
+	def clone(cls, optlist={}, url=None, dir=None, revset=None):
 		'clone an existing gitri repository'
+
+		if not url:
+			raise GitriError('url must be specified')
 
 		#calculate directory
 		if dir == None:
@@ -107,7 +113,12 @@ class Project(object):
 
 		#checkout revset
 		p = cls(dir)
-		p.checkout({})
+		output = p.checkout({})
+
+		output = ['%s cloned into %s' % (url, dir)]
+		output.append(p.checkout({}))
+
+		return '\n'.join(output)
 
 	@classmethod
 	def valid_project(cls, dir):
@@ -134,11 +145,11 @@ class Project(object):
 
 		return ret
 
-	def revset(self):
+	def revset(self, optlist={}):
 		'return the name of the current revset'
 		return self.manifest_repo.head()
 
-	def status(self, optlist):
+	def status(self, optlist={}):
 		self.read_manifest()
 
 		stat = []
@@ -158,10 +169,9 @@ class Project(object):
 			else:
 				stat.append(' D ' + r['path'])
 
-		for s in stat:
-			print s
+		return '\n'.join(stat)
 
-	def checkout(self, optlist, revset=None):
+	def checkout(self, optlist={}, revset=None):
 		'check out a revset'
 
 		#Checkout manifest manifest
@@ -206,7 +216,9 @@ class Project(object):
 			#checkout the gitri branch
 			repo.checkout(branches['gitri'])
 
-	def fetch(self, optlist, repos=None):
+		return 'revset %s checked out' % revset
+
+	def fetch(self, optlist={}, repos=None):
 		self.read_manifest()
 
 		if repos is None:
@@ -224,7 +236,9 @@ class Project(object):
 				repo.fetch(r['remote'])
 				repo.remote_set_head(r['remote'])
 
-	def update(self, optlist, repos=None):
+		#TODO:output
+
+	def update(self, optlist={}, repos=None):
 		self.read_manifest()
 
 		if repos is None:
@@ -233,9 +247,11 @@ class Project(object):
 			#TODO: turn list of strings into repos
 			pass
 
-		#TODO:fetch?
+		#TODO:fetch? current thinking is no: update and fetch are separate operations
 
 		#TODO:update manifest
+
+		output = []
 
 		for r in repos:
 			path = os.path.abspath(os.path.join(self.dir, r['path']))
@@ -245,33 +261,32 @@ class Project(object):
 				branches = self.get_branches(repo, r)
 				#Check if there are no changes
 				if repo.rev_parse(repo.head()) == repo.rev_parse(branches['remote']):
-					print '%s is up to date with upstream repo: no change' % r['name']
+					output.append('%s is up to date with upstream repo: no change' % r['name'])
 				elif repo.is_descendant(branches['remote']):
-					print '%s is ahead of upstream repo: no change' % r['name']
+					output.append('%s is ahead of upstream repo: no change' % r['name'])
 				#Fast-Forward if we can
 				elif repo.can_fastforward(branches['remote']):
-					print '%s is being fast-forward to upstream repo' % r['name']
+					output.append('%s is being fast-forward to upstream repo' % r['name'])
 					repo.merge(branches['remote'])
 					repo.update_ref(branches['bookmark'], 'HEAD')
 				#otherwise rebase local work
 				elif repo.is_descendant(branches['bookmark']):
 					if repo.dirty():
 						#TODO: option to stash, rebase, then reapply?
-						print '%s has local uncommitted changes and cannot be rebased. Skipping this repo.' % r['name']
+						output.append('%s has local uncommitted changes and cannot be rebased. Skipping this repo.' % r['name'])
 					else:
-						print '%s is being rebased onto upstream repo' % r['name']
+						output.append('%s is being rebased onto upstream repo' % r['name'])
 						[ret,out,err] = repo.rebase(branches['bookmark'], onto=branches['remote'])
 						if ret:
-							print out
+							output.append(out)
 						else:
 							repo.update_ref(branches['bookmark'], branches['remote'])
 				#Fail
 				elif repo.head() != branches['gitri']:
-					print repo.head(), branches['gitri']
-					print '%s has changed branches and cannot be safely updated. Skipping this repo.' % r['name']
+					output.append('%s has changed branches and cannot be safely updated. Skipping this repo.' % r['name'])
 				else:
 					#Weird stuff has happened - right branch, wrong relationship to bookmark
-					print 'The current branch in %s has been in altered in an unusal way and must be manually updated.' % r['name']
+					output.append('The current branch in %s has been in altered in an unusal way and must be manually updated.' % r['name'])
 			else:
 				url = self.remotes[r['remote']]['fetch'] + '/' + r['name']
 				if r.has_key('revision'):
@@ -279,6 +294,8 @@ class Project(object):
 				else:
 					repo = git.Repo.clone(url, dir=path, remote=r['remote'], local_branch=branches['gitri'])
 				repo.update_ref(branches['bookmark'], 'HEAD')
+
+		return output
 
 	#TODO: define precisely what this should do
 	#def reset(self, optlist=[], repos=None):
@@ -303,6 +320,7 @@ gitri_commands = {
 	'fetch': (Project.fetch, True, ''),
 	'update': (Project.update, True, ''),
 	'status': (Project.status, True, ''),
+	'revset': (Project.revset, True, ''),
 	#'reset': (Project.reset, True, ['soft', 'mixed', 'hard']),
 	}
 
