@@ -10,6 +10,7 @@ gitri_commands = {
 	'update': (Project.update, True, ''),
 	'status': (Project.status, True, ''),
 	'revset': (Project.revset, True, ''),
+	'add': (Project.add, True, ''),
 	#'reset': (Project.reset, True, ['soft', 'mixed', 'hard']),
 	}
 

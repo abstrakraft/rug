@@ -97,7 +97,7 @@ class Project(object):
 
 		#checkout revset
 		p = cls(dir)
-		output = p.checkout({})
+		output = p.checkout()
 
 		output = ['%s cloned into %s' % (url, dir)]
 		output.append(p.checkout({}))
@@ -134,6 +134,7 @@ class Project(object):
 		return self.manifest_repo.head()
 
 	def status(self, optlist={}):
+		#TODO: this is file status - also need repo status
 		self.read_manifest()
 
 		stat = []
@@ -253,12 +254,15 @@ class Project(object):
 					output.append('%s is being fast-forward to upstream repo' % r['name'])
 					repo.merge(branches['remote'])
 					repo.update_ref(branches['bookmark'], 'HEAD')
-				#otherwise rebase local work
+				#otherwise rebase/merge local work
 				elif repo.is_descendant(branches['bookmark']):
 					if repo.dirty():
 						#TODO: option to stash, rebase, then reapply?
 						output.append('%s has local uncommitted changes and cannot be rebased. Skipping this repo.' % r['name'])
 					else:
+						#TODO: option to merge instead of rebase
+						#TODO: handle merge/rebase conflicts
+						#TODO: remember if we're in a conflict state
 						output.append('%s is being rebased onto upstream repo' % r['name'])
 						[ret,out,err] = repo.rebase(branches['bookmark'], onto=branches['remote'])
 						if ret:
@@ -280,6 +284,43 @@ class Project(object):
 				repo.update_ref(branches['bookmark'], 'HEAD')
 
 		return '\n'.join(output)
+
+	def add(self, optlist={}, dir=None):
+		#TODO:options and better logic to commit shas vs branch names
+		if not dir:
+			raise GitriError('unspecified directory')
+
+		self.read_manifest()
+
+		path = os.path.abspath(dir)
+		if not git.Repo.valid_repo(path):
+			raise GitriError('invalid repo %s' % dir)
+
+		r = [r for r in self.repos if path == os.path.abspath(os.path.join(self.dir, r['path']))]
+		if len(r) == 0:
+			#TODO: handle new repos
+			raise GitriError('unrecognized repo %s' % dir)
+		else:
+			r = r[0]
+			repo = git.Repo(path)
+			head = repo.head()
+			#TODO: revise logic here
+			if repo.valid_sha(head):
+				if r['revision'] == head:
+					raise GitriError('no change to repo %s' % dir)
+			else:
+				branches = self.get_branches(repo, r)
+				if repo.rev_parse(branches['remote']) == repo.rev_parse(head):
+					raise GitriError('no change to repo %s' % dir)
+
+			rel_path = os.path.relpath(path, self.dir)
+			manifest = xml.dom.minidom.parse(os.path.join(self.manifest_dir, 'manifest.xml'))
+			xml_repos = manifest.getElementsByTagName('repo')
+			xml_repo = [xr for xr in xml_repos if rel_path == xr.attributes['path'].value][0]
+			xml_repo.attributes['revision'] = head
+			xml_repo.attributes['local'] = 'true'
+			file = open(os.path.join(self.manifest_dir, 'manifest.xml'), 'w')
+			file.write(manifest.toxml()+'\n')
 
 	#TODO: define precisely what this should do
 	#def reset(self, optlist=[], repos=None):

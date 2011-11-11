@@ -1,6 +1,6 @@
 # gitri #
 _another repository of repositories implementation, inspired by [git-repo](http://code.google.com/p/git-repo), [ivy](http://ant.apache.org/ivy/) and others_
-
+_note that this document is a plan of operation, and that most of the commands and workflows in it are not yet implemented_
 
 ## Nomenclature ##
  - __repository__: a git (or other VCS) repository.  __repo__ is accepted shorthand.
