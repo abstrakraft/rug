@@ -19,9 +19,9 @@ adds repos to "index" = working copy of manifest
 
         gitri add
 
-commits changes to manifest)
+publish changes to project
 
-        gitri commit
+        gitri publish
 
 ### Clone Project ###
 
@@ -48,7 +48,7 @@ update local manifest file
 
 commit local manifest file, push all repo branches and manifest branch
 
-       gitri push
+       gitri publish
 
 ## Porcelain Commands ##
 - `init` create a new gitri project
@@ -57,7 +57,7 @@ commit local manifest file, push all repo branches and manifest branch
 - `checkout` checkout another revset
 - `revset` create a new revset
 - `add` add a repos branch or commit to the local manifest file
-- `push` push repo changes to servers (commit (manifest) followed by repo-push and manifest-push)
+- `publish` push repo changes to servers (commit (manifest) followed by repo-push and manifest-push)
 - `status` print status of all repos (--deep option for internal status)
 - `fetch` fetch all repos
 - `commit` commit everything necessary to checkout another revset, then check out the current one again, and get the same "stuff"

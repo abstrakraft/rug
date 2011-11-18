@@ -12,6 +12,8 @@ class InvalidProjectError(GitriError):
 	pass
 
 GITRI_DIR = '.gitri'
+#TODO: should this be configurable or in the manifest?
+GITRI_SHA_RIDER = 'gitri/sha_rider'
 
 class Project(object):
 	def __init__(self, dir):
@@ -318,9 +320,88 @@ class Project(object):
 			xml_repos = manifest.getElementsByTagName('repo')
 			xml_repo = [xr for xr in xml_repos if rel_path == xr.attributes['path'].value][0]
 			xml_repo.attributes['revision'] = head
-			xml_repo.attributes['local'] = 'true'
+			xml_repo.attributes['unpublished'] = 'true'
 			file = open(os.path.join(self.manifest_dir, 'manifest.xml'), 'w')
 			file.write(manifest.toxml()+'\n')
+
+			return "%s added to manifest" % rel_path
+
+	def publish(self, optlist={}, remote=None):
+		if not remote: raise GitriError('manifest remote must be specified')
+		if not remote in self.manifest_repo.remote_list(): raise GitriError('unrecognzied remote %s' % remote)
+
+		self.read_manifest()
+
+		error = []
+		output = []
+
+		#Verify that we can push to all unpublished remotes
+		ready = True
+		unpub_repos = []
+		for r in self.repos:
+			if r.get('unpublished', False):
+				#TODO: verify correctness & consistency of path functions/formats throughout gitri
+				path = os.path.abspath(os.path.join(self.dir, r['path']))
+				repo = git.Repo(path)
+
+				if repo.valid_sha(r['revision']):
+					refspec = '%s:refs/%s' % (r['revision'], GITRI_SHA_RIDER)
+					force = True
+				else:
+					refspec = r['revision']
+					force = False
+				unpub_repos.append((r, repo, refspec, force))
+				if not repo.test_push(r['remote'], refspec, force=force):
+					error.append('%s: %s cannot be pushed to %s' % (r['name'], r['revision'], r['remote']))
+					ready = False
+
+		#Verify that we can push to manifest repo
+		#TODO: We don't always need to push manifest repo
+		manifest_revision = self.manifest_repo.head()
+		if self.manifest_repo.valid_sha(manifest_revision):
+			manifest_refspec = '%s:refs/%s' % (manifest_revision, GITRI_SHA_RIDER)
+			manifest_force = True
+		else:
+			manifest_refspec = manifest_revision
+			manifest_force = False
+		if not self.manifest_repo.test_push(remote, manifest_refspec, force=manifest_force):
+			error.append('manifest branch %s cannot be pushed to %s' % (manifest_revision, r['remote']))
+			ready = False
+
+		#Error if we can't publish anything
+		if not ready:
+			raise GitriError('\n'.join(error))
+
+		#Push unpublished remotes
+		for (r, repo, refspec, force) in unpub_repos:
+			repo.push(r['remote'], refspec, force)
+			output.append('%s: pushed %s to %s' % (r['name'], r['revision'], r['remote']))
+
+		#Rewrite manifest
+		unpub_repo_paths = [r['path'] for (r, repo, refspec, force) in unpub_repos]
+		manifest = xml.dom.minidom.parse(os.path.join(self.manifest_dir, 'manifest.xml'))
+		xml_repos = manifest.getElementsByTagName('repo')
+		for xr in xml_repos:
+			if xr.attributes['path'].value in unpub_repo_paths:
+				xr.attributes.removeNamedItem('unpublished')
+		file = open(os.path.join(self.manifest_dir, 'manifest.xml'), 'w')
+		file.write(manifest.toxml()+'\n')
+		file.close()
+
+		#Commit and push manifest
+		#TODO:input commit message
+		self.manifest_repo.commit(all=True, message="Gitri publish commit")
+		manifest_revision = self.manifest_repo.head()
+		if self.manifest_repo.valid_sha(manifest_revision):
+			manifest_refspec = '%s:refs/%s' % (manifest_revision, GITRI_SHA_RIDER)
+			manifest_force = True
+		else:
+			manifest_refspec = manifest_revision
+			manifest_force = False
+		self.manifest_repo.push(remote, manifest_refspec, force=manifest_force)
+		output.append('manifest branch %s pushed to %s' % (manifest_revision, r['remote']))
+
+		return '\n'.join(output)
 
 	#TODO: define precisely what this should do
 	#def reset(self, optlist=[], repos=None):

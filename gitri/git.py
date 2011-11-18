@@ -15,6 +15,10 @@ class UnknownRevisionError(GitError):
 	pass
 
 def shell_cmd(cmd, args, cwd=None, raise_errors=True, print_output=False):
+	'''shell_cmd(cmd, args, cwd=None, raise_errors=True, print_output=False) -> runs a shell command
+	default: returns None
+	raise_errors=True, print_output=False: returns standard output
+	raise_errors=False: returns (ret, stdout, stderr)'''
 	if print_output:
 		stdout = None
 	else:
@@ -149,10 +153,33 @@ class Repo(object):
 
 	def fetch(self, remote=None):
 		args = ['fetch', '-v']
-		if remote:
-			args.append(remote)
+		if remote: args.append(remote)
 
 		return self.git_cmd(args)
+
+	def commit(self, all=False, message=None):
+		args = ['commit']
+		if all: args.append('-a')
+		if message: args.extend(['-m', message])
+
+		return self.git_cmd(args)
+
+	def push(self, remote=None, branch=None, force=False):
+		args = ['push']
+		if force: args.append('-f')
+		if remote: args.append(remote)
+		if branch: args.append(branch)
+
+		return self.git_cmd(args)
+
+	def test_push(self, remote=None, branch=None, force=False):
+		args = ['push', '-n']
+		if force: args.append('-f')
+		if remote: args.append(remote)
+		if branch: args.append(branch)
+
+		(ret, out, err) = self.git_cmd(args, raise_errors=False)
+		return not ret
 
 	#TODO: doesn't work
 	def branch_list(self, all=False):
