@@ -29,11 +29,20 @@ class Project(object):
 		self.manifest_repo = git.Repo(self.manifest_dir)
 
 	def read_manifest(self):
-		'read in the manifest.xml file.  Project methods should only call this function if necessary.'
+		'''Project.read_manifest() -- read the manifest file.
+Project methods should only call this function if necessary.'''
 		(self.remotes, self.repos) = manifest.read(os.path.join(self.manifest_dir, 'manifest.xml'))
 
-	def load_repos(self):
-		for path in self.repos:
+	def load_repos(self, repos=None):
+		'''Project.load_repos(repos=self.repos) -- load repo objects for repos.
+Project.read_manifest should be called prior to calling this function.
+Project methods should only call this function if necessary.
+Loads all repos by default, or those repos specified in the repos argument, which may be a list or a dictionary.'''
+
+		if repos is None:
+			repos = self.repos
+
+		for path in repos:
 			abs_path = os.path.abspath(os.path.join(self.dir, path))
 			if git.Repo.valid_repo(abs_path):
 				self.repos[path]['repo'] = git.Repo(abs_path)
@@ -42,7 +51,7 @@ class Project(object):
 
 	@classmethod
 	def find_project(cls, dir = None):
-		'climb up the directory tree looking for a valid gitri project'
+		'Project.find_project(dir=pwd) -> project -- climb up the directory tree looking for a valid gitri project'
 
 		if dir == None:
 			dir = os.getcwd()
@@ -61,7 +70,7 @@ class Project(object):
 
 	@classmethod
 	def clone(cls, optlist={}, url=None, dir=None, revset=None):
-		'clone an existing gitri repository'
+		'Project.clone -- clone an existing gitri repository'
 
 		if not url:
 			raise GitriError('url must be specified')
@@ -97,26 +106,27 @@ class Project(object):
 
 	@classmethod
 	def valid_project(cls, dir):
-		'verify the minimum qualities necessary to be called a gitri project'
+		'Project.valid_project(dir) -- verify the minimum qualities necessary to be called a gitri project'
 		manifest_dir = os.path.join(dir, GITRI_DIR, 'manifest')
 		return git.Repo.valid_repo(manifest_dir) and \
 			os.path.exists(os.path.join(manifest_dir, 'manifest.xml'))
 
-	def get_branches(self, repo, repo_conf):
+	def get_branches(self, r):
 		#gitri_branch = 'gitri/%s/%s/%s' % (self.revset(), r['remote'], r.get('revision', 'HEAD'))
 		#bookmark_branch = 'refs/bookmarks/%s/%s/%s' % (self.revset(), r['remote'], r.get('revision', 'HEAD'))
-		revision = repo_conf.get('revision', 'HEAD')
+		revision = r.get('revision', 'HEAD')
+		repo = r['repo']
 		if revision == 'HEAD':
-			start = len('refs/remotes/%s/' % repo_conf['remote'])
-			revision = repo.symbolic_ref('refs/remotes/%s/HEAD' % repo_conf['remote'])[start:]
+			start = len('refs/remotes/%s/' % r['remote'])
+			revision = repo.symbolic_ref('refs/remotes/%s/HEAD' % r['remote'])[start:]
 		ret = {}
 		ret['gitri'] = revision
 		if repo.valid_sha(revision):
 			ret['bookmark'] = revision
 			ret['remote'] = revision
 		else:
-			ret['bookmark'] = 'refs/gitri/%s/%s/%s' % (self.revset(), repo_conf['remote'], revision)
-			ret['remote'] = '%s/%s' % (repo_conf['remote'], revision)
+			ret['bookmark'] = 'refs/gitri/%s/%s/%s' % (self.revset(), r['remote'], revision)
+			ret['remote'] = '%s/%s' % (r['remote'], revision)
 
 		return ret
 
@@ -166,33 +176,45 @@ class Project(object):
 			#if the repo doesn't exist, clone it
 			repo = r['repo']
 			if not repo:
-				abs_path = os.path.abspath(os.path.join(self.dir, r['path']))
-				repo = git.Repo.clone(url, dir=abs_path, remote=r['remote'], rev=r.get('revision'))
-
-			#Verify remotes
-			if r['remote'] not in repo.remote_list():
-				repo.remote_add(r['remote'], url)
+				self.create_repo(r)
 			else:
-				#Currently easier to just set the remote URL rather than check and set if different
-				repo.remote_set_url(r['remote'], url)
+				#Verify remotes
+				if r['remote'] not in repo.remote_list():
+					repo.remote_add(r['remote'], url)
+				else:
+					#Currently easier to just set the remote URL rather than check and set if different
+					repo.remote_set_url(r['remote'], url)
 
-			#Fetch from remote
-			#TODO:decide if we should always do this here.  Sometimes have to, since we may not have
-			#seen this remote before
-			repo.fetch(r['remote'])
+				#Fetch from remote
+				#TODO:decide if we should always do this here.  Sometimes have to, since we may not have
+				#seen this remote before
+				repo.fetch(r['remote'])
 
-			branches = self.get_branches(repo, r)
+				branches = self.get_branches(r)
 
-			#create gitri and bookmark branches if they don't exist
-			if not repo.valid_ref(branches['gitri']):
-				repo.branch_create(branches['gitri'], branches['remote'])
-			if not repo.valid_ref(branches['bookmark']):
-				repo.update_ref(branches['bookmark'], branches['remote'])
+				#create gitri and bookmark branches if they don't exist
+				if not repo.valid_ref(branches['gitri']):
+					repo.branch_create(branches['gitri'], branches['remote'])
+				if not repo.valid_ref(branches['bookmark']):
+					repo.update_ref(branches['bookmark'], branches['remote'])
 
-			#checkout the gitri branch
-			repo.checkout(branches['gitri'])
+				#checkout the gitri branch
+				repo.checkout(branches['gitri'])
 
 		return 'revset %s checked out' % revset
+
+	def create_repo(self, r):
+		abs_path = os.path.abspath(os.path.join(self.dir, r['path']))
+		url = self.remotes[r['remote']]['fetch'] + '/' + r['name']
+		if r.has_key('revision'):
+			repo = git.Repo.clone(url, dir=abs_path, remote=r['remote'], rev=r['revision'])
+		else:
+			repo = git.Repo.clone(url, dir=abs_path, remote=r['remote'])
+		r['repo'] = repo
+		branches = self.get_branches(r)
+		repo.update_ref(branches['gitri'], branches['remote'])
+		repo.checkout(branches['gitri'])
+		repo.update_ref(branches['bookmark'], 'HEAD')
 
 	def fetch(self, optlist={}, repos=None):
 		self.read_manifest()
@@ -233,7 +255,7 @@ class Project(object):
 		for r in repos:
 			repo = r['repo']
 			if repo:
-				branches = self.get_branches(repo, r)
+				branches = self.get_branches(r)
 				#Check if there are no changes
 				if repo.rev_parse(repo.head()) == repo.rev_parse(branches['remote']):
 					output.append('%s is up to date with upstream repo: no change' % r['name'])
@@ -266,13 +288,7 @@ class Project(object):
 					#Weird stuff has happened - right branch, wrong relationship to bookmark
 					output.append('The current branch in %s has been in altered in an unusal way and must be manually updated.' % r['name'])
 			else:
-				abs_path = os.path.abspath(os.path.join(self.dir, r['path']))
-				url = self.remotes[r['remote']]['fetch'] + '/' + r['name']
-				if r.has_key('revision'):
-					repo = git.Repo.clone(url, dir=abs_path, remote=r['remote'], rev=r['revision'], local_branch=branches['gitri'])
-				else:
-					repo = git.Repo.clone(url, dir=abs_path, remote=r['remote'], local_branch=branches['gitri'])
-				repo.update_ref(branches['bookmark'], 'HEAD')
+				self.create_repo(r)
 
 		return '\n'.join(output)
 
@@ -283,24 +299,23 @@ class Project(object):
 
 		self.read_manifest()
 
-		path = os.path.abspath(dir)
-		if not git.Repo.valid_repo(path):
-			raise GitriError('invalid repo %s' % dir)
-
-		rel_path = os.path.relpath(path, self.dir)
-		r = self.repos.get(rel_path, None)
+		abs_path = os.path.abspath(dir)
+		path = os.path.relpath(abs_path, self.dir)
+		r = self.repos.get(path, None)
 		if r is None:
 			#TODO: handle new repos
 			raise GitriError('unrecognized repo %s' % dir)
 		else:
-			repo = git.Repo(path)
+			self.load_repos(path)
+			#TODO: check for errors
+			repo = r['repo']
 			head = repo.head()
 			#TODO: revise logic here to take care of shas/branch names, branches that have changed sha
 			if repo.valid_sha(head):
 				if r['revision'] == head:
 					raise GitriError('no change to repo %s' % dir)
 			else:
-				branches = self.get_branches(repo, r)
+				branches = self.get_branches(r)
 				if repo.rev_parse(branches['remote']) == repo.rev_parse(head):
 					raise GitriError('no change to repo %s' % dir)
 
@@ -326,8 +341,8 @@ class Project(object):
 		for r in self.repos.values():
 			if r.get('unpublished', False):
 				#TODO: verify correctness & consistency of path functions/formats throughout gitri
-				path = os.path.abspath(os.path.join(self.dir, r['path']))
-				repo = git.Repo(path)
+				self.load_repos(r['path'])
+				repo = r['repo']
 
 				if repo.valid_sha(r['revision']):
 					refspec = '%s:refs/%s' % (r['revision'], GITRI_SHA_RIDER)
@@ -335,6 +350,7 @@ class Project(object):
 				else:
 					refspec = r['revision']
 					force = False
+				#TODO: repo is now in r
 				unpub_repos.append((r, repo, refspec, force))
 				if not repo.test_push(r['remote'], refspec, force=force):
 					error.append('%s: %s cannot be pushed to %s' % (r['name'], r['revision'], r['remote']))
