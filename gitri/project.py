@@ -3,6 +3,7 @@ import os
 import sys
 import xml.dom.minidom
 
+import manifest
 import git
 
 class GitriError(StandardError):
@@ -29,27 +30,15 @@ class Project(object):
 
 	def read_manifest(self):
 		'read in the manifest.xml file.  Project methods should only call this function if necessary.'
-		self.remotes = {}
-		self.repos = []
-		self.default = {}
+		(self.remotes, self.repos) = manifest.read(os.path.join(self.manifest_dir, 'manifest.xml'))
 
-		manifest = xml.dom.minidom.parse(os.path.join(self.manifest_dir, 'manifest.xml'))
-		m = manifest.childNodes[0]
-		if m.localName != 'manifest':
-			raise GitriError('malformed manifext.xml: no manifest element')
-		for node in m.childNodes:
-			if node.localName == 'default':
-				self.default.update(dict(node.attributes.items()))
-			elif node.localName == 'remote':
-				remote = dict(node.attributes.items())
-				#TODO: detect duplicates
-				self.remotes[remote['name']] = remote
-			elif (node.localName == 'project') or (node.localName == 'repo'):
-				repo = {}
-				repo.update(self.default)
-				repo.update(dict(node.attributes.items()))
-				#TODO: detect duplicates
-				self.repos.append(repo)
+	def load_repos(self):
+		for path in self.repos:
+			abs_path = os.path.abspath(os.path.join(self.dir, path))
+			if git.Repo.valid_repo(abs_path):
+				self.repos[path]['repo'] = git.Repo(abs_path)
+			else:
+				self.repos[path]['repo'] = None
 
 	@classmethod
 	def find_project(cls, dir = None):
@@ -138,12 +127,12 @@ class Project(object):
 	def status(self, optlist={}):
 		#TODO: this is file status - also need repo status
 		self.read_manifest()
+		self.load_repos()
 
 		stat = []
-		for r in self.repos:
-			abs_path = os.path.abspath(os.path.join(self.dir, r['path']))
-			if git.Repo.valid_repo(abs_path):
-				repo = git.Repo(abs_path)
+		for r in self.repos.values():
+			repo = r['repo']
+			if repo:
 				r_stat = repo.status(porcelain=True)
 				if r_stat != '':
 					if r['path'] == '.':
@@ -169,16 +158,16 @@ class Project(object):
 
 		#reread manifest
 		self.read_manifest()
+		self.load_repos()
 
-		for r in self.repos:
-			path = os.path.abspath(os.path.join(self.dir, r['path']))
+		for r in self.repos.values():
 			url = self.remotes[r['remote']]['fetch'] + '/' + r['name']
 
 			#if the repo doesn't exist, clone it
-			if not git.Repo.valid_repo(path):
-				repo = git.Repo.clone(url, dir=path, remote=r['remote'], rev=r.get('revision'))
-			else:
-				repo = git.Repo(path)
+			repo = r['repo']
+			if not repo:
+				abs_path = os.path.abspath(os.path.join(self.dir, r['path']))
+				repo = git.Repo.clone(url, dir=abs_path, remote=r['remote'], rev=r.get('revision'))
 
 			#Verify remotes
 			if r['remote'] not in repo.remote_list():
@@ -209,7 +198,8 @@ class Project(object):
 		self.read_manifest()
 
 		if repos is None:
-			repos = self.repos
+			self.load_repos()
+			repos = self.repos.values()
 		else:
 			#TODO: turn list of strings into repos
 			pass
@@ -217,9 +207,8 @@ class Project(object):
 		self.manifest_repo.fetch()
 
 		for r in repos:
-			path = os.path.abspath(os.path.join(self.dir, r['path']))
-			if git.Repo.valid_repo(path):
-				repo = git.Repo(path)
+			repo = r['repo']
+			if repo:
 				repo.fetch(r['remote'])
 				repo.remote_set_head(r['remote'])
 
@@ -229,7 +218,8 @@ class Project(object):
 		self.read_manifest()
 
 		if repos is None:
-			repos = self.repos
+			self.load_repos()
+			repos = self.repos.values()
 		else:
 			#TODO: turn list of strings into repos
 			pass
@@ -241,10 +231,8 @@ class Project(object):
 		output = []
 
 		for r in repos:
-			path = os.path.abspath(os.path.join(self.dir, r['path']))
-
-			if git.Repo.valid_repo(path):
-				repo = git.Repo(path)
+			repo = r['repo']
+			if repo:
 				branches = self.get_branches(repo, r)
 				#Check if there are no changes
 				if repo.rev_parse(repo.head()) == repo.rev_parse(branches['remote']):
@@ -278,11 +266,12 @@ class Project(object):
 					#Weird stuff has happened - right branch, wrong relationship to bookmark
 					output.append('The current branch in %s has been in altered in an unusal way and must be manually updated.' % r['name'])
 			else:
+				abs_path = os.path.abspath(os.path.join(self.dir, r['path']))
 				url = self.remotes[r['remote']]['fetch'] + '/' + r['name']
 				if r.has_key('revision'):
-					repo = git.Repo.clone(url, dir=path, remote=r['remote'], rev=r['revision'], local_branch=branches['gitri'])
+					repo = git.Repo.clone(url, dir=abs_path, remote=r['remote'], rev=r['revision'], local_branch=branches['gitri'])
 				else:
-					repo = git.Repo.clone(url, dir=path, remote=r['remote'], local_branch=branches['gitri'])
+					repo = git.Repo.clone(url, dir=abs_path, remote=r['remote'], local_branch=branches['gitri'])
 				repo.update_ref(branches['bookmark'], 'HEAD')
 
 		return '\n'.join(output)
@@ -298,15 +287,15 @@ class Project(object):
 		if not git.Repo.valid_repo(path):
 			raise GitriError('invalid repo %s' % dir)
 
-		r = [r for r in self.repos if path == os.path.abspath(os.path.join(self.dir, r['path']))]
-		if len(r) == 0:
+		rel_path = os.path.relpath(path, self.dir)
+		r = self.repos.get(rel_path, None)
+		if r is None:
 			#TODO: handle new repos
 			raise GitriError('unrecognized repo %s' % dir)
 		else:
-			r = r[0]
 			repo = git.Repo(path)
 			head = repo.head()
-			#TODO: revise logic here
+			#TODO: revise logic here to take care of shas/branch names, branches that have changed sha
 			if repo.valid_sha(head):
 				if r['revision'] == head:
 					raise GitriError('no change to repo %s' % dir)
@@ -315,14 +304,10 @@ class Project(object):
 				if repo.rev_parse(branches['remote']) == repo.rev_parse(head):
 					raise GitriError('no change to repo %s' % dir)
 
-			rel_path = os.path.relpath(path, self.dir)
-			manifest = xml.dom.minidom.parse(os.path.join(self.manifest_dir, 'manifest.xml'))
-			xml_repos = manifest.getElementsByTagName('repo')
-			xml_repo = [xr for xr in xml_repos if rel_path == xr.attributes['path'].value][0]
-			xml_repo.attributes['revision'] = head
-			xml_repo.attributes['unpublished'] = 'true'
-			file = open(os.path.join(self.manifest_dir, 'manifest.xml'), 'w')
-			file.write(manifest.toxml()+'\n')
+			(remotes, repos, default) = manifest.read(os.path.join(self.manifest_dir, 'manifest.xml'), apply_default=False)
+			repos[rel_path]['revision'] = head
+			repos[rel_path]['unpublished'] = 'true'
+			manifest.write(remotes, repos, default)
 
 			return "%s added to manifest" % rel_path
 
@@ -338,7 +323,7 @@ class Project(object):
 		#Verify that we can push to all unpublished remotes
 		ready = True
 		unpub_repos = []
-		for r in self.repos:
+		for r in self.repos.values():
 			if r.get('unpublished', False):
 				#TODO: verify correctness & consistency of path functions/formats throughout gitri
 				path = os.path.abspath(os.path.join(self.dir, r['path']))
