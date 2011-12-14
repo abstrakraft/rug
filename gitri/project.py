@@ -72,6 +72,8 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 	def clone(cls, optlist={}, url=None, dir=None, revset=None):
 		'Project.clone -- clone an existing gitri repository'
 
+		#TODO: more output
+
 		if not url:
 			raise GitriError('url must be specified')
 
@@ -95,12 +97,11 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		if not os.path.exists(manifest_src):
 			raise GitriError('invalid manifest repo: no manifest.xml')
 
+		output = ['%s cloned into %s' % (url, dir)]
+
 		#checkout revset
 		p = cls(dir)
-		output = p.checkout()
-
-		output = ['%s cloned into %s' % (url, dir)]
-		output.append(p.checkout({}))
+		output.append(p.checkout())
 
 		return '\n'.join(output)
 
@@ -112,27 +113,38 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 			os.path.exists(os.path.join(manifest_dir, 'manifest.xml'))
 
 	def get_branches(self, r):
-		#gitri_branch = 'gitri/%s/%s/%s' % (self.revset(), r['remote'], r.get('revision', 'HEAD'))
-		#bookmark_branch = 'refs/bookmarks/%s/%s/%s' % (self.revset(), r['remote'], r.get('revision', 'HEAD'))
 		revision = r.get('revision', 'HEAD')
 		repo = r['repo']
 		if revision == 'HEAD':
 			start = len('refs/remotes/%s/' % r['remote'])
 			revision = repo.symbolic_ref('refs/remotes/%s/HEAD' % r['remote'])[start:]
 		ret = {}
-		ret['gitri'] = revision
 		if repo.valid_sha(revision):
+			ret['live_porcelain'] = revision
+			ret['live_plumbing'] = revision
+			ret['gitri'] = revision
 			ret['bookmark'] = revision
+			ret['bookmark_index'] = revision
 			ret['remote'] = revision
 		else:
-			ret['bookmark'] = 'refs/gitri/%s/%s/%s' % (self.revset(), r['remote'], revision)
+			ret['live_porcelain'] = revision
+			ret['live_plumbing'] = 'refs/heads/%s' % revision
+			ret['gitri'] = 'refs/gitri/heads/%s/%s/%s' % (self.revset(), r['remote'], revision)
+			ret['bookmark'] = 'refs/gitri/bookmarks/%s/%s/%s' % (self.revset(), r['remote'], revision)
+			ret['bookmark_index'] = 'refs/gitri/bookmark_index'
 			ret['remote'] = '%s/%s' % (r['remote'], revision)
 
 		return ret
 
-	def revset(self, optlist={}):
-		'return the name of the current revset'
-		return self.manifest_repo.head()
+	def revset(self, optlist={}, dst=None, src=None):
+		'return the name of the current revset or create a new revset'
+		if dst is None:
+			return self.manifest_repo.head()
+		else:
+			if src is None:
+				self.manifest_repo.branch_create(dst)
+			else:
+				self.manifest_repo.branch_create(dst, src)
 
 	def status(self, optlist={}):
 		#TODO: this is file status - also need repo status
@@ -193,13 +205,15 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 				branches = self.get_branches(r)
 
 				#create gitri and bookmark branches if they don't exist
-				if not repo.valid_ref(branches['gitri']):
-					repo.branch_create(branches['gitri'], branches['remote'])
-				if not repo.valid_ref(branches['bookmark']):
-					repo.update_ref(branches['bookmark'], branches['remote'])
+				#branches are fully qualified ('refs/...') branch names, so use update_ref
+				#instead of create_branch
+				for b in ['gitri', 'bookmark']:
+					if not repo.valid_ref(branches[b]):
+						repo.update_ref(branches[b], branches['remote'])
 
-				#checkout the gitri branch
-				repo.checkout(branches['gitri'])
+				#create and checkout the live branch
+				repo.update_ref(branches['live_plumbing'], branches['gitri'])
+				repo.checkout(branches['live_porcelain'])
 
 		return 'revset %s checked out' % revset
 
@@ -212,9 +226,10 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 			repo = git.Repo.clone(url, dir=abs_path, remote=r['remote'])
 		r['repo'] = repo
 		branches = self.get_branches(r)
-		repo.update_ref(branches['gitri'], branches['remote'])
-		repo.checkout(branches['gitri'])
-		repo.update_ref(branches['bookmark'], 'HEAD')
+		for b in ['live_plumbing', 'gitri', 'bookmark']:
+			repo.update_ref(branches[b], branches['remote'])
+
+		repo.checkout(branches['live_porcelain'])
 
 	def fetch(self, optlist={}, repos=None):
 		self.read_manifest()
@@ -256,6 +271,13 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 			repo = r['repo']
 			if repo:
 				branches = self.get_branches(r)
+				#We don't touch the bookmark branch here - we refer to bookmark index branch if it exists,
+				#or bookmark branch if not, and update the bookmark index branch if necessary.  Commit updates
+				#bookmark branch and removes bookmark index
+				if repo.valid_ref(branches['bookmark_index']):
+					current_bookmark = branches['bookmark_index']
+				else:
+					current_bookmark = branches['bookmark']
 				#Check if there are no changes
 				if repo.rev_parse(repo.head()) == repo.rev_parse(branches['remote']):
 					output.append('%s is up to date with upstream repo: no change' % r['name'])
@@ -265,9 +287,9 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 				elif repo.can_fastforward(branches['remote']):
 					output.append('%s is being fast-forward to upstream repo' % r['name'])
 					repo.merge(branches['remote'])
-					repo.update_ref(branches['bookmark'], 'HEAD')
+					repo.update_ref(branches['bookmark_index'], branches['remote'])
 				#otherwise rebase/merge local work
-				elif repo.is_descendant(branches['bookmark']):
+				elif repo.is_descendant(bookmark_branch):
 					if repo.dirty():
 						#TODO: option to stash, rebase, then reapply?
 						output.append('%s has local uncommitted changes and cannot be rebased. Skipping this repo.' % r['name'])
@@ -276,11 +298,11 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 						#TODO: handle merge/rebase conflicts
 						#TODO: remember if we're in a conflict state
 						output.append('%s is being rebased onto upstream repo' % r['name'])
-						[ret,out,err] = repo.rebase(branches['bookmark'], onto=branches['remote'])
+						[ret,out,err] = repo.rebase(bookmark_branch, onto=branches['remote'])
 						if ret:
 							output.append(out)
 						else:
-							repo.update_ref(branches['bookmark'], branches['remote'])
+							repo.update_ref(branches['bookmark_index'], branches['remote'])
 				#Fail
 				elif repo.head() != branches['gitri']:
 					output.append('%s has changed branches and cannot be safely updated. Skipping this repo.' % r['name'])
@@ -293,7 +315,8 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		return '\n'.join(output)
 
 	def add(self, optlist={}, dir=None):
-		#TODO:options and better logic to commit shas vs branch names
+		#TODO:options and better logic to add shas vs branch names
+		#TODO:handle lists of dirs
 		if not dir:
 			raise GitriError('unspecified directory')
 
@@ -306,8 +329,8 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 			#TODO: handle new repos
 			raise GitriError('unrecognized repo %s' % dir)
 		else:
-			self.load_repos(path)
-			#TODO: check for errors
+			self.load_repos([path])
+			#TODO: check for errors in load_repos
 			repo = r['repo']
 			head = repo.head()
 			#TODO: revise logic here to take care of shas/branch names, branches that have changed sha
@@ -316,19 +339,43 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 					raise GitriError('no change to repo %s' % dir)
 			else:
 				branches = self.get_branches(r)
-				if repo.rev_parse(branches['remote']) == repo.rev_parse(head):
+				if repo.rev_parse(branches['gitri']) == repo.rev_parse(head):
 					raise GitriError('no change to repo %s' % dir)
 
-			(remotes, repos, default) = manifest.read(os.path.join(self.manifest_dir, 'manifest.xml'), apply_default=False)
-			repos[rel_path]['revision'] = head
-			repos[rel_path]['unpublished'] = 'true'
-			manifest.write(remotes, repos, default)
+			filename = os.path.join(self.manifest_dir, 'manifest.xml')
+			(remotes, repos, default) = manifest.read(filename, apply_default=False)
+			#TODO: don't specify revision if it is the default and hasn't changed
+			repos[path]['revision'] = head
+			repos[path]['unpublished'] = 'true'
+			manifest.write(filename, remotes, repos, default)
 
-			return "%s added to manifest" % rel_path
+			return "%s added to manifest" % path
+
+	def commit(self, optlist={}, message=None):
+		if not message: raise GitriError('commit message must be specified')
+
+		self.read_manifest()
+		self.load_repos()
+
+		#TODO: currently, if a branch is added, we commit the branch as it exists at commit time
+		#rather than add time.  Correct operation should be determined.
+
+		if message is None:
+			message = ""
+		self.manifest_repo.commit(message, all=True)
+
+		for r in self.repos.values():
+			repo = r['repo']
+			branches = self.get_branches(r)
+			repo.update_ref(branches['gitri'], branches['live_plumbing'])
+
+			if repo.valid_ref(branches['bookmark_index'], include_sha=False):
+				repo.update_ref(branches['bookmark'], branches['bookmark_index'])
+				repo.branch_delete(branches['bookmark_index'])
 
 	def publish(self, optlist={}, remote=None):
 		if not remote: raise GitriError('manifest remote must be specified')
-		if not remote in self.manifest_repo.remote_list(): raise GitriError('unrecognzied remote %s' % remote)
+		if not remote in self.manifest_repo.remote_list(): raise GitriError('unrecognized remote %s' % remote)
 
 		self.read_manifest()
 
@@ -341,10 +388,12 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		for r in self.repos.values():
 			if r.get('unpublished', False):
 				#TODO: verify correctness & consistency of path functions/formats throughout gitri
-				self.load_repos(r['path'])
+				self.load_repos([r['path']])
 				repo = r['repo']
 
 				if repo.valid_sha(r['revision']):
+					#TODO: PROBLEM: branches pushed as sha_riders may not have heads associated with them,
+					#which means that clones won't pull them down
 					refspec = '%s:refs/%s' % (r['revision'], GITRI_SHA_RIDER)
 					force = True
 				else:
@@ -390,15 +439,19 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		file.close()
 
 		#Commit and push manifest
+		#TODO: think about interaction between commit and publish - should commit be required?
 		#TODO:input commit message
-		self.manifest_repo.commit(all=True, message="Gitri publish commit")
-		manifest_revision = self.manifest_repo.head()
-		if self.manifest_repo.valid_sha(manifest_revision):
-			manifest_refspec = '%s:refs/%s' % (manifest_revision, GITRI_SHA_RIDER)
-			manifest_force = True
-		else:
-			manifest_refspec = manifest_revision
-			manifest_force = False
+		#TODO: we've taken steps to predict errors, but failure can still happen.  Need to
+		#leave the repo in a consistent state if that happens
+		if self.manifest_repo.dirty():
+			self.commit(message="Gitri publish commit")
+			manifest_revision = self.manifest_repo.head()
+			if self.manifest_repo.valid_sha(manifest_revision):
+				manifest_refspec = '%s:refs/%s' % (manifest_revision, GITRI_SHA_RIDER)
+				manifest_force = True
+			else:
+				manifest_refspec = manifest_revision
+				manifest_force = False
 		self.manifest_repo.push(remote, manifest_refspec, force=manifest_force)
 		output.append('manifest branch %s pushed to %s' % (manifest_revision, r['remote']))
 

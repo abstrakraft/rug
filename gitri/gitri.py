@@ -11,6 +11,7 @@ gitri_commands = {
 	'status': (Project.status, True, ''),
 	'revset': (Project.revset, True, ''),
 	'add': (Project.add, True, ''),
+	'commit': (Project.commit, True, ''),
 	'publish': (Project.publish, True, ''),
 	#'reset': (Project.reset, True, ['soft', 'mixed', 'hard']),
 	}

@@ -86,6 +86,11 @@ class Repo(object):
 			repo = cls(dir)
 			repo.remote_add(remote, url)
 			repo.fetch(remote)
+			#TODO: weirdness: Git can't actually tell what the HEAD of the remote is directly,
+			#just what it's SHA is.  Which means that if multiple remote branches are at the HEAD sha,
+			#git can't tell which is the actual HEAD.  'git remote set-head -a' errors in this case.
+			#Amazingly, 'git clone' just guesses, and may guess wrong.  This behavior is seriously broken.
+			#see guess_remote_host in git/remote.c
 			repo.remote_set_head(remote)
 
 			if rev and repo.valid_ref(rev):
@@ -157,10 +162,10 @@ class Repo(object):
 
 		return self.git_cmd(args)
 
-	def commit(self, all=False, message=None):
+	def commit(self, message, all=False):
 		args = ['commit']
 		if all: args.append('-a')
-		if message: args.extend(['-m', message])
+		args.extend(['-m', message])
 
 		return self.git_cmd(args)
 
@@ -193,10 +198,23 @@ class Repo(object):
 		args = ['show-ref']
 		return [r.split()[1][5:] for r in self.git_cmd(args).split('\n')]
 
-	def branch_create(self, dst, src=None):
-		args = ['branch', dst]
+	def branch_create(self, dst, src=None, force=False):
+		args = ['branch']
+		if force:
+			args.append('-f')
+		args.append(dst)
 		if src:
 			args.append(src)
+
+		self.git_cmd(args)
+
+	def branch_delete(self, dst, force=False):
+		args = ['branch']
+		if force:
+			args.append('-D')
+		else:
+			args.append('-d')
+		args.append(dst)
 
 		self.git_cmd(args)
 
@@ -259,7 +277,7 @@ class Repo(object):
 			if e.args[0].find('unknown revision') > -1:
 				raise UnknownRevisionError('Unknown revision %s' % rev)
 			else:
-				raise GitError
+				raise e
 
 	def valid_ref(self, ref, include_sha=True):
 		if include_sha:

@@ -63,5 +63,5 @@ def write(filename, remotes, repos, default):
 		manifest.appendChild(repo_node)
 
 	f = open(filename, 'w')
-	doc.writexml(f)
+	doc.writexml(f, newl='\n', addindent='\t')
 	f.close()

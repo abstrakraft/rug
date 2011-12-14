@@ -68,13 +68,12 @@ commit local manifest file, push all repo branches and manifest branch
 
 ### Project Layout ###
 The .gitri folder in the main repo contains the manifest repo.
-_Revise this sentence! (Once I figure out how this is going to work)_
 
-On init, for each project in the repo, a branch called 
-
-        gitri/<project_remote>/<revset>/<remote>/<branch> 
-is created and checked out.  This branch is
-known as the local gitri branch.
+For each revset, and in each repo, the following branches exist:
+- `live` The name of the branch that should be checked out.  Note that this is really just a branch name - what that name happens to point to doesn't mean anything.
+- `gitri` Tracks the revset's local branch across checkouts.  This branch points to the sha that should become the live branch when the revset in question is checked out.
+- `bookmark` Tracks the remote branch as of the last commit.  Used to rebase changes on update if there is no bookmark_index.
+- `bookmark_index` Tracks the remote branch as of the last update.  Used to rebase changes on update, if it exists.
 
 A more detailed branch name is required because there may be branches with the same name from different project remotes, revsets, and remotes.
 
