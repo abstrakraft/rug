@@ -1,18 +1,60 @@
 import sys
 import getopt
-from project import Project
+from project import Project, GitriError
 
-#(function, is_instance_func, options)
+def clone(optlist={}, url=None, dir=None, revset=None):
+	if not url:
+		raise GitriError('url must be specified')
+
+	return Project.clone(url, dir, revset)
+
+def checkout(proj, optlist={}, rev=None):
+	return proj.checkout(rev)
+
+def fetch(proj, optlist={}, repos=None):
+	return proj.fetch(repos)
+
+def update(proj, optlist={}, repos=None):
+	return proj.update(repos)
+
+def status(proj, optlist={}):
+	return proj.status()
+
+def revset(proj, optlist={}, dst=None, src=None):
+	if dst is None:
+		return proj.revset()
+	else:
+		if src is None:
+			return proj.revset_create(dst)
+		else:
+			return proj.revset_create(dst, src)
+
+def add(proj, optlist={}, dir=None):
+	if not dir:
+		raise GitriError('unspecified directory')
+
+	return proj.add(dir)
+
+def commit(proj, optlist={}, message=None):
+	if not message:
+		raise NotImplementedError('commit message editor not yet implemented') #TODO
+
+	return proj.commit(message)
+
+def publish(proj, optlist={}, remote=None):
+	return proj.publish(remote)
+
+#(function, pass project flag, options)
 gitri_commands = {
-	'clone': (Project.clone, False, ''),
-	'checkout': (Project.checkout, True, ''),
-	'fetch': (Project.fetch, True, ''),
-	'update': (Project.update, True, ''),
-	'status': (Project.status, True, ''),
-	'revset': (Project.revset, True, ''),
-	'add': (Project.add, True, ''),
-	'commit': (Project.commit, True, ''),
-	'publish': (Project.publish, True, ''),
+	'clone': (clone, False, ''),
+	'checkout': (checkout, True, ''),
+	'fetch': (fetch, True, ''),
+	'update': (update, True, ''),
+	'status': (status, True, ''),
+	'revset': (revset, True, ''),
+	'add': (add, True, ''),
+	'commit': (commit, True, ''),
+	'publish': (publish, True, ''),
 	#'reset': (Project.reset, True, ['soft', 'mixed', 'hard']),
 	}
 

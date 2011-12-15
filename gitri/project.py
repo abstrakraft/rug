@@ -69,13 +69,10 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		raise InvalidProjectError('not a valid gitri project')
 
 	@classmethod
-	def clone(cls, optlist={}, url=None, dir=None, revset=None):
+	def clone(cls, url, dir=None, revset=None):
 		'Project.clone -- clone an existing gitri repository'
 
 		#TODO: more output
-
-		if not url:
-			raise GitriError('url must be specified')
 
 		#calculate directory
 		if dir == None:
@@ -136,17 +133,15 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 		return ret
 
-	def revset(self, optlist={}, dst=None, src=None):
-		'return the name of the current revset or create a new revset'
-		if dst is None:
-			return self.manifest_repo.head()
-		else:
-			if src is None:
-				self.manifest_repo.branch_create(dst)
-			else:
-				self.manifest_repo.branch_create(dst, src)
+	def revset(self):
+		'return the name of the current revset'
+		return self.manifest_repo.head()
 
-	def status(self, optlist={}):
+	def revset_create(self, dst, src=None):
+		'create a new revset'
+		self.manifest_repo.branch_create(dst, src)
+
+	def status(self):
 		#TODO: this is file status - also need repo status
 		self.read_manifest()
 		self.load_repos()
@@ -169,7 +164,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 		return '\n'.join(stat)
 
-	def checkout(self, optlist={}, revset=None):
+	def checkout(self, revset=None):
 		'check out a revset'
 
 		#Checkout manifest manifest
@@ -220,10 +215,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 	def create_repo(self, r):
 		abs_path = os.path.abspath(os.path.join(self.dir, r['path']))
 		url = self.remotes[r['remote']]['fetch'] + '/' + r['name']
-		if r.has_key('revision'):
-			repo = git.Repo.clone(url, dir=abs_path, remote=r['remote'], rev=r['revision'])
-		else:
-			repo = git.Repo.clone(url, dir=abs_path, remote=r['remote'])
+		repo = git.Repo.clone(url, dir=abs_path, remote=r['remote'], rev=r.get('revision', None))
 		r['repo'] = repo
 		branches = self.get_branches(r)
 		for b in ['live_plumbing', 'gitri', 'bookmark']:
@@ -231,7 +223,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 		repo.checkout(branches['live_porcelain'])
 
-	def fetch(self, optlist={}, repos=None):
+	def fetch(self, repos=None):
 		self.read_manifest()
 
 		if repos is None:
@@ -251,7 +243,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 		#TODO:output
 
-	def update(self, optlist={}, repos=None):
+	def update(self, repos=None):
 		self.read_manifest()
 
 		if repos is None:
@@ -314,12 +306,9 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 		return '\n'.join(output)
 
-	def add(self, optlist={}, dir=None):
+	def add(self, dir):
 		#TODO:options and better logic to add shas vs branch names
 		#TODO:handle lists of dirs
-		if not dir:
-			raise GitriError('unspecified directory')
-
 		self.read_manifest()
 
 		abs_path = os.path.abspath(dir)
@@ -351,9 +340,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 			return "%s added to manifest" % path
 
-	def commit(self, optlist={}, message=None):
-		if not message: raise GitriError('commit message must be specified')
-
+	def commit(self, message):
 		self.read_manifest()
 		self.load_repos()
 
@@ -373,9 +360,11 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 				repo.update_ref(branches['bookmark'], branches['bookmark_index'])
 				repo.branch_delete(branches['bookmark_index'])
 
-	def publish(self, optlist={}, remote=None):
-		if not remote: raise GitriError('manifest remote must be specified')
-		if not remote in self.manifest_repo.remote_list(): raise GitriError('unrecognized remote %s' % remote)
+	def publish(self, remote):
+		if remote is None:
+			remote = 'origin'
+		if not remote in self.manifest_repo.remote_list():
+			raise GitriError('unrecognized remote %s' % remote)
 
 		self.read_manifest()
 
