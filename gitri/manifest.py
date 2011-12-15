@@ -1,16 +1,23 @@
 import xml.dom.minidom
 
-def read(filename, apply_default=True):
+def read(filename, default_default=None, apply_default=True):
 	manifest = xml.dom.minidom.parse(filename)
 	m = manifest.childNodes[0]
 	if m.localName != 'manifest':
 		raise GitriError('malformed manifext.xml: no manifest element')
 
 	#Defaults
-	default = {}
+	manifest_default = {}
 	default_nodes = manifest.getElementsByTagName('default')
+	#TODO: error on multiple default nodes?
 	for node in default_nodes:
-		default.update(node.attributes.items())
+		manifest_default.update(node.attributes.items())
+	if default_default is not None:
+		default = {}
+		default.update(default_default)
+		default.update(manifest_default)
+	else:
+		default = manifest_default
 
 	#Remotes
 	remotes = {}
@@ -35,7 +42,8 @@ def read(filename, apply_default=True):
 	if apply_default:
 		return (remotes, repos)
 	else:
-		return (remotes, repos, default)
+		#manifest_default doesn't have the default_default entries, which we don't want to return anyway
+		return (remotes, repos, manifest_default)
 
 def write(filename, remotes, repos, default):
 	doc = xml.dom.minidom.Document()

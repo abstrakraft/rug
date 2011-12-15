@@ -5,6 +5,7 @@ import xml.dom.minidom
 
 import manifest
 import git
+from repo import Repo
 
 class GitriError(StandardError):
 	pass
@@ -17,6 +18,11 @@ GITRI_DIR = '.gitri'
 GITRI_SHA_RIDER = 'gitri/sha_rider'
 
 class Project(object):
+	vcs_constructors = {
+		'git': git.Repo,
+		'gitri': Repo,
+	}
+
 	def __init__(self, dir):
 		self.dir = os.path.abspath(dir)
 		#Verify validity
@@ -31,7 +37,9 @@ class Project(object):
 	def read_manifest(self):
 		'''Project.read_manifest() -- read the manifest file.
 Project methods should only call this function if necessary.'''
-		(self.remotes, self.repos) = manifest.read(os.path.join(self.manifest_dir, 'manifest.xml'))
+		default_default = {'vcs': 'git'}
+		(self.remotes, self.repos) = manifest.read(os.path.join(self.manifest_dir, 'manifest.xml'),
+			default_default=default_default)
 
 	def load_repos(self, repos=None):
 		'''Project.load_repos(repos=self.repos) -- load repo objects for repos.
@@ -44,8 +52,9 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 		for path in repos:
 			abs_path = os.path.abspath(os.path.join(self.dir, path))
-			if git.Repo.valid_repo(abs_path):
-				self.repos[path]['repo'] = git.Repo(abs_path)
+			R = self.vcs_constructors[self.repos[path]['vcs']]
+			if R.valid_repo(abs_path):
+				self.repos[path]['repo'] = R(abs_path)
 			else:
 				self.repos[path]['repo'] = None
 
@@ -141,6 +150,10 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		'create a new revset'
 		self.manifest_repo.branch_create(dst, src)
 
+	def revset_delete(self, dst, force=False):
+		'delete a revset'
+		self.manifest_repo.branch_delete(dst, force)
+
 	def status(self):
 		#TODO: this is file status - also need repo status
 		self.read_manifest()
@@ -215,7 +228,8 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 	def create_repo(self, r):
 		abs_path = os.path.abspath(os.path.join(self.dir, r['path']))
 		url = self.remotes[r['remote']]['fetch'] + '/' + r['name']
-		repo = git.Repo.clone(url, dir=abs_path, remote=r['remote'], rev=r.get('revision', None))
+		R = self.vcs_constructors[r['vcs']]
+		repo = R.clone(url, dir=abs_path, remote=r['remote'], rev=r.get('revision', None))
 		r['repo'] = repo
 		branches = self.get_branches(r)
 		for b in ['live_plumbing', 'gitri', 'bookmark']:
@@ -360,12 +374,17 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 				repo.update_ref(branches['bookmark'], branches['bookmark_index'])
 				repo.branch_delete(branches['bookmark_index'])
 
-	def publish(self, remote):
+	#TODO: remove this quick hack
+	def test_publish(self, remote=None):
+		return self.publish(remote, test=True)
+
+	def publish(self, remote=None, test=False):
 		if remote is None:
 			remote = 'origin'
 		if not remote in self.manifest_repo.remote_list():
 			raise GitriError('unrecognized remote %s' % remote)
 
+		#TODO: use manifest.read with apply_default=False
 		self.read_manifest()
 
 		error = []
@@ -406,6 +425,9 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		if not self.manifest_repo.test_push(remote, manifest_refspec, force=manifest_force):
 			error.append('manifest branch %s cannot be pushed to %s' % (manifest_revision, r['remote']))
 			ready = False
+
+		if test:
+			return ready
 
 		#Error if we can't publish anything
 		if not ready:
