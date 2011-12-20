@@ -5,7 +5,6 @@ import xml.dom.minidom
 
 import manifest
 import git
-from repo import Repo
 
 class GitriError(StandardError):
 	pass
@@ -18,10 +17,7 @@ GITRI_DIR = '.gitri'
 GITRI_SHA_RIDER = 'gitri/sha_rider'
 
 class Project(object):
-	vcs_constructors = {
-		'git': git.Repo,
-		'gitri': Repo,
-	}
+	vcs_class = {}
 
 	def __init__(self, dir):
 		self.dir = os.path.abspath(dir)
@@ -37,7 +33,7 @@ class Project(object):
 	def read_manifest(self):
 		'''Project.read_manifest() -- read the manifest file.
 Project methods should only call this function if necessary.'''
-		default_default = {'vcs': 'git'}
+		default_default = {'revision': 'master', 'vcs': 'git'}
 		(self.remotes, self.repos) = manifest.read(os.path.join(self.manifest_dir, 'manifest.xml'),
 			default_default=default_default)
 
@@ -52,11 +48,15 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 		for path in repos:
 			abs_path = os.path.abspath(os.path.join(self.dir, path))
-			R = self.vcs_constructors[self.repos[path]['vcs']]
+			R = self.vcs_class[self.repos[path]['vcs']]
 			if R.valid_repo(abs_path):
 				self.repos[path]['repo'] = R(abs_path)
 			else:
 				self.repos[path]['repo'] = None
+
+	@classmethod
+	def register_vcs(cls, vcs, vcs_class):
+		cls.vcs_class[vcs] = vcs_class
 
 	@classmethod
 	def find_project(cls, dir = None):
@@ -78,7 +78,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		raise InvalidProjectError('not a valid gitri project')
 
 	@classmethod
-	def clone(cls, url, dir=None, revset=None):
+	def clone(cls, url, dir=None, remote=None, revset=None):
 		'Project.clone -- clone an existing gitri repository'
 
 		#TODO: more output
@@ -96,7 +96,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 			raise GitriError('Directory already exists')
 
 		#clone manifest repo into gitri directory
-		git.Repo.clone(url, dir=os.path.join(dir, GITRI_DIR, 'manifest'), rev=revset)
+		git.Repo.clone(url, dir=os.path.join(dir, GITRI_DIR, 'manifest'), remote=remote, rev=revset)
 
 		#verify valid manifest
 		manifest_src = os.path.join(dir, GITRI_DIR, 'manifest', 'manifest.xml')
@@ -141,6 +141,9 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 			ret['remote'] = '%s/%s' % (r['remote'], revision)
 
 		return ret
+
+	def remote_add(self, remote, url):
+		return self.manifest_repo.remote_add(remote, url)
 
 	def revset(self):
 		'return the name of the current revset'
@@ -228,7 +231,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 	def create_repo(self, r):
 		abs_path = os.path.abspath(os.path.join(self.dir, r['path']))
 		url = self.remotes[r['remote']]['fetch'] + '/' + r['name']
-		R = self.vcs_constructors[r['vcs']]
+		R = self.vcs_class[r['vcs']]
 		repo = R.clone(url, dir=abs_path, remote=r['remote'], rev=r.get('revision', None))
 		r['repo'] = repo
 		branches = self.get_branches(r)
@@ -325,12 +328,30 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		#TODO:handle lists of dirs
 		self.read_manifest()
 
+		filename = os.path.join(self.manifest_dir, 'manifest.xml')
+		(remotes, repos, default) = manifest.read(filename, apply_default=False)
+
 		abs_path = os.path.abspath(dir)
 		path = os.path.relpath(abs_path, self.dir)
 		r = self.repos.get(path, None)
 		if r is None:
-			#TODO: handle new repos
-			raise GitriError('unrecognized repo %s' % dir)
+			#TODO: pass in remote, name, etc
+			raise NotImplementedError('new repos not yet supported: %s' % dir)
+			#TODO: compare to defaults
+			repo = None
+			for (vcs, R) in vcs_class.items():
+				if R.valid_repo(path):
+					repo = R(path)
+					break
+			if repo is None:
+				raise GitriError('unrecognized repo %s' % dir)
+			else:
+				repos[path] = {'path': path}
+				head = repo.head()
+				if head != default['revision']:
+					repos[path]['revision'] = head
+
+				repos[path]['unpublished'] = 'true'
 		else:
 			self.load_repos([path])
 			#TODO: check for errors in load_repos
@@ -345,14 +366,13 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 				if repo.rev_parse(branches['gitri']) == repo.rev_parse(head):
 					raise GitriError('no change to repo %s' % dir)
 
-			filename = os.path.join(self.manifest_dir, 'manifest.xml')
-			(remotes, repos, default) = manifest.read(filename, apply_default=False)
-			#TODO: don't specify revision if it is the default and hasn't changed
-			repos[path]['revision'] = head
+			if repos[path].has_key('revision') or (default.get('revision') != head):
+				repos[path]['revision'] = head
 			repos[path]['unpublished'] = 'true'
-			manifest.write(filename, remotes, repos, default)
 
-			return "%s added to manifest" % path
+		manifest.write(filename, remotes, repos, default)
+
+		return "%s added to manifest" % path
 
 	def commit(self, message):
 		self.read_manifest()
@@ -483,6 +503,8 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 	#	
 	#	for r in repos:
 	#		r.checkout(gitri_branch, mode = mode)
+
+Project.register_vcs('git', git.Repo)
 
 #The following code was necessary before manual clone was implemented in order to
 #clone into a non-empty directory

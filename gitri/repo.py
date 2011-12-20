@@ -1,6 +1,13 @@
-#TODO: stuck here because of circular dependency.
-#find a fix and move this out
+import project
+
 class Repo(object):
+	valid_repo = project.Project.valid_project
+
+	@classmethod
+	def clone(cls, url, dir=None, remote=None, rev=None):
+		project.Project.clone(url, dir=dir, remote=remote, revset=rev)
+		return cls(dir)
+
 	def __init__(self, dir):
 		from project import Project
 		self.project = Project(dir)
@@ -8,7 +15,6 @@ class Repo(object):
 		p = self.project
 		mr = self.project.manifest_repo
 		delegated_methods = {
-			'valid_repo': p.valid_project,
 			'valid_sha': mr.valid_sha,
 			'valid_ref': mr.valid_ref,
 			'update_ref': mr.update_ref,
@@ -35,3 +41,5 @@ class Repo(object):
 		}
 
 		self.__dict__.update(delegated_methods)
+
+project.Project.register_vcs('gitri', Repo)
