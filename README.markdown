@@ -1,4 +1,4 @@
-![The Rug](raw/master/documentation/logo.png)
+![The Rug](/bollwyvl/rug/raw/master/documentation/logo.png)
 # The Rug #
 _another repository of repositories implementation, inspired by [git-repo](http://code.google.com/p/git-repo), [ivy](http://ant.apache.org/ivy/) and others_
 
