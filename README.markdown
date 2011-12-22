@@ -1,58 +1,60 @@
-# gitri #
+# The Rug #
 _another repository of repositories implementation, inspired by [git-repo](http://code.google.com/p/git-repo), [ivy](http://ant.apache.org/ivy/) and others_
 
 _note that this document is a plan of operation, and that most of the commands and workflows in it are not yet implemented_
 
+_formerly known as gitri
+
 ## Nomenclature ##
- - __repository__: a git (or other VCS) repository.  __repo__ is accepted shorthand.
- - __project__: A collection of __repos__ in a specified layout.  A project is defined by a manifest __repo__.
- - __revset__: A set of revisions of the __repos__ in a project.  They are named by the branch of the __project__ in which they are stored.
+- __repository__: a git (or other VCS) repository.  __repo__ is accepted shorthand.
+- __project__: A collection of __repos__ in a specified layout.  A project is defined by a manifest __repo__.
+- __revset__: A set of revisions of the __repos__ in a project.  They are named by the branch of the __project__ in which they are stored.
 
 ## Workflows ##
 
 ### New Project ####
 use git to arrange repos and stuff
 
-         gitri init [dir]
+	rug init [dir]
 
 adds repos to "index" = working copy of manifest
 
-        gitri add
+	rug add
 
 publish changes to project
 
-        gitri publish
+	rug publish
 
 ### Clone Project ###
 
-        gitri clone <url> [dir] [revset]
-        gitri checkout <revset>
+	rug clone <url> [dir] [revset]
+	rug checkout <revset>
 
 ### Track server changes ###
 fetches from all repos, rebases or merges in all changes
 
-        gitri update
+	rug update
 
 ### Create a new revset to work a ticket ###
 creates a new branch in manifest
 
-       gitri revset <new_revset> [source_revset]
+	rug revset <new_revset> [source_revset]
 
 use git to commit locally, change branches, etc.
 
-       gitri develop
+	rug develop
 
 update local manifest file
 
-       gitri add [-h|--hash|-b|--branch] <repo names>
+	rug add [-h|--hash|-b|--branch] <repo names>
 
 commit local manifest file, push all repo branches and manifest branch
 
-       gitri publish
+	rug publish
 
 ## Porcelain Commands ##
-- `init` create a new gitri project
-- `clone` clone an existing gitri project
+- `init` create a new rug project
+- `clone` clone an existing rug project
 - `update` update all repos with upstream updates (fetch followed by ?resetish command?)
 - `checkout` checkout another revset
 - `revset` create a new revset
@@ -63,16 +65,16 @@ commit local manifest file, push all repo branches and manifest branch
 - `commit` commit everything necessary to checkout another revset, then check out the current one again, and get the same "stuff"
 
 ### Future Commands ###
-- `reset` reset a subset of repos to the proper gitri branch
+- `reset` reset a subset of repos to the proper rug branch
 - `merge` merge repos of other revsets into current one
 
 ### Project Layout ###
-The .gitri folder in the main repo contains the manifest repo.
+The .rug folder in the main repo contains the manifest repo.
 
 For each revset, and in each repo, the following branches exist:
 
 - `live` The name of the branch that should be checked out.  Note that this is really just a branch name - what that name happens to point to doesn't mean anything.
-- `gitri` Tracks the revset's local branch across checkouts.  This branch points to the sha that should become the live branch when the revset in question is checked out.
+- `rug` Tracks the revset's local branch across checkouts.  This branch points to the sha that should become the live branch when the revset in question is checked out.
 - `bookmark` Tracks the remote branch as of the last commit.  Used to rebase changes on update if there is no bookmark_index.
 - `bookmark_index` Tracks the remote branch as of the last update.  Used to rebase changes on update, if it exists.
 
@@ -81,10 +83,10 @@ A more detailed branch name is required because there may be branches with the s
 Current philosophy is that development from different revsets with the same branches, should be separate.
 
 ## Branches ##
-Checking out a revset for the first time creates the local gitri branch (see above for naming convention).  Note that
+Checking out a revset for the first time creates the local rug branch (see above for naming convention).  Note that
 two revsets that point to the same branch will have two local copies of that branch - this is by design.  In this way,
 we implicitly maintain (committed, at least) local state of revsets between across checkouts.
-Checking out subsequent times leaves the current branch and checks out the local gitri branch.  Checkout options are passed straight
+Checking out subsequent times leaves the current branch and checks out the local rug branch.  Checkout options are passed straight
 through to git.
 
 A message should be printed indicating the last time the revset was fetched from the server, and any local changes to the revset.
@@ -92,15 +94,15 @@ A message should be printed indicating the last time the revset was fetched from
 Adding a repo records that branch name in the manifest.xml file.  Note that these changes are not maintained across revset checkouts, i.e.
 adding, then checking out a revset (even the same one), then checking out the original revset reverts the branch to the local git branch.
 
-Commit creates the proper local gitri branch if the user is on another branch (see naming convention above - users may check out other
-branches that are suffixes of that naming convention, and the correctly named branch will be created.  Existing gitri branches will be
+Commit creates the proper local rug branch if the user is on another branch (see naming convention above - users may check out other
+branches that are suffixes of that naming convention, and the correctly named branch will be created.  Existing rug branches will be
 overwritten if they are ancestors of the new branch, otherwise an error will be thrown, or overriden with -f).  Changes to manifest.xml
 are committed.
 
 Push pushes all local branches, including the manifest branch (revset) to the appropriate server.
 
 ## Philosophy ##
-Obviously, given the name, gitri is meant to mimic git in some sense.  However, there are fundamental differences between managing "projects" and "repositories."
+Obviously, given the name, rug is meant to mimic git in some sense.  However, there are fundamental differences between managing "projects" and "repositories."
 Some loose design guidelines:
 
 1. Follow git when it makes sense.

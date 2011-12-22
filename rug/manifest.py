@@ -4,7 +4,7 @@ def read(filename, default_default=None, apply_default=True):
 	manifest = xml.dom.minidom.parse(filename)
 	m = manifest.childNodes[0]
 	if m.localName != 'manifest':
-		raise GitriError('malformed manifext.xml: no manifest element')
+		raise RugError('malformed manifext.xml: no manifest element')
 
 	#Defaults
 	manifest_default = {}

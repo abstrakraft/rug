@@ -1,10 +1,10 @@
 import sys
 import getopt
-from project import Project, GitriError
+from project import Project, RugError
 
 def clone(optlist={}, url=None, dir=None, revset=None):
 	if not url:
-		raise GitriError('url must be specified')
+		raise RugError('url must be specified')
 
 	return Project.clone(url, dir, revset)
 
@@ -31,7 +31,7 @@ def revset(proj, optlist={}, dst=None, src=None):
 
 def add(proj, optlist={}, dir=None):
 	if not dir:
-		raise GitriError('unspecified directory')
+		raise RugError('unspecified directory')
 
 	return proj.add(dir)
 
@@ -45,7 +45,7 @@ def publish(proj, optlist={}, remote=None):
 	return proj.publish(remote)
 
 #(function, pass project flag, options)
-gitri_commands = {
+rug_commands = {
 	'clone': (clone, False, ''),
 	'checkout': (checkout, True, ''),
 	'fetch': (fetch, True, ''),
@@ -59,11 +59,11 @@ gitri_commands = {
 	}
 
 def main():
-	if (len(sys.argv) < 2) or not gitri_commands.has_key(sys.argv[1]):
+	if (len(sys.argv) < 2) or not rug_commands.has_key(sys.argv[1]):
 		#TODO: write usage
-		print 'gitri usage'
+		print 'rug usage'
 	else:
-		cmd = gitri_commands[sys.argv[1]]
+		cmd = rug_commands[sys.argv[1]]
 		[optlist, args] = getopt.gnu_getopt(sys.argv[2:], cmd[2])
 		if cmd[1]:
 			ret = cmd[0](Project.find_project(), optlist, *args)

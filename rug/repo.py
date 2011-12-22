@@ -42,4 +42,4 @@ class Repo(object):
 
 		self.__dict__.update(delegated_methods)
 
-project.Project.register_vcs('gitri', Repo)
+project.Project.register_vcs('rug', Repo)

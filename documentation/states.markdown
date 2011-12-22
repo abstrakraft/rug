@@ -1,6 +1,6 @@
-# gitri terminology
+# rug terminology
 
-- a gitri **project** is a set of named sets of files (**repositories**)...
+- a rug **project** is a set of named sets of files (**repositories**)...
   - _the state of which is managed in a special file, called the __manifest__
     file, arguably the only novel work done in a project_
   - _which describes how the latent potential of a **NASCENT** project would be

@@ -5,4 +5,4 @@
 	B. verify remotes
 	C. fetch from remote (maybe not?)
 	D. checkout branches that don't exist
-	E. checkout gitri branch
+	E. checkout rug branch

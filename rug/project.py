@@ -6,15 +6,15 @@ import xml.dom.minidom
 import manifest
 import git
 
-class GitriError(StandardError):
+class RugError(StandardError):
 	pass
 
-class InvalidProjectError(GitriError):
+class InvalidProjectError(RugError):
 	pass
 
-GITRI_DIR = '.gitri'
+RUG_DIR = '.rug'
 #TODO: should this be configurable or in the manifest?
-GITRI_SHA_RIDER = 'gitri/sha_rider'
+RUG_SHA_RIDER = 'rug/sha_rider'
 
 class Project(object):
 	vcs_class = {}
@@ -23,11 +23,11 @@ class Project(object):
 		self.dir = os.path.abspath(dir)
 		#Verify validity
 		if not self.valid_project(self.dir):
-			raise InvalidProjectError('not a valid gitri project')
+			raise InvalidProjectError('not a valid rug project')
 
 		#Create convenient properties
-		self.gitri_dir = os.path.join(self.dir, GITRI_DIR)
-		self.manifest_dir = os.path.join(self.gitri_dir, 'manifest')
+		self.rug_dir = os.path.join(self.dir, RUG_DIR)
+		self.manifest_dir = os.path.join(self.rug_dir, 'manifest')
 		self.manifest_repo = git.Repo(self.manifest_dir)
 
 	def read_manifest(self):
@@ -60,7 +60,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 	@classmethod
 	def find_project(cls, dir = None):
-		'Project.find_project(dir=pwd) -> project -- climb up the directory tree looking for a valid gitri project'
+		'Project.find_project(dir=pwd) -> project -- climb up the directory tree looking for a valid rug project'
 
 		if dir == None:
 			dir = os.getcwd()
@@ -75,11 +75,11 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 				else:
 					(head, tail) = os.path.split(head)
 
-		raise InvalidProjectError('not a valid gitri project')
+		raise InvalidProjectError('not a valid rug project')
 
 	@classmethod
 	def clone(cls, url, dir=None, remote=None, revset=None):
-		'Project.clone -- clone an existing gitri repository'
+		'Project.clone -- clone an existing rug repository'
 
 		#TODO: more output
 
@@ -93,15 +93,15 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 		#verify directory doesn't exist
 		if os.path.exists(dir):
-			raise GitriError('Directory already exists')
+			raise RugError('Directory already exists')
 
-		#clone manifest repo into gitri directory
-		git.Repo.clone(url, dir=os.path.join(dir, GITRI_DIR, 'manifest'), remote=remote, rev=revset)
+		#clone manifest repo into rug directory
+		git.Repo.clone(url, dir=os.path.join(dir, RUG_DIR, 'manifest'), remote=remote, rev=revset)
 
 		#verify valid manifest
-		manifest_src = os.path.join(dir, GITRI_DIR, 'manifest', 'manifest.xml')
+		manifest_src = os.path.join(dir, RUG_DIR, 'manifest', 'manifest.xml')
 		if not os.path.exists(manifest_src):
-			raise GitriError('invalid manifest repo: no manifest.xml')
+			raise RugError('invalid manifest repo: no manifest.xml')
 
 		output = ['%s cloned into %s' % (url, dir)]
 
@@ -113,8 +113,8 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 	@classmethod
 	def valid_project(cls, dir):
-		'Project.valid_project(dir) -- verify the minimum qualities necessary to be called a gitri project'
-		manifest_dir = os.path.join(dir, GITRI_DIR, 'manifest')
+		'Project.valid_project(dir) -- verify the minimum qualities necessary to be called a rug project'
+		manifest_dir = os.path.join(dir, RUG_DIR, 'manifest')
 		return git.Repo.valid_repo(manifest_dir) and \
 			os.path.exists(os.path.join(manifest_dir, 'manifest.xml'))
 
@@ -128,16 +128,16 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		if repo.valid_sha(revision):
 			ret['live_porcelain'] = revision
 			ret['live_plumbing'] = revision
-			ret['gitri'] = revision
+			ret['rug'] = revision
 			ret['bookmark'] = revision
 			ret['bookmark_index'] = revision
 			ret['remote'] = revision
 		else:
 			ret['live_porcelain'] = revision
 			ret['live_plumbing'] = 'refs/heads/%s' % revision
-			ret['gitri'] = 'refs/gitri/heads/%s/%s/%s' % (self.revset(), r['remote'], revision)
-			ret['bookmark'] = 'refs/gitri/bookmarks/%s/%s/%s' % (self.revset(), r['remote'], revision)
-			ret['bookmark_index'] = 'refs/gitri/bookmark_index'
+			ret['rug'] = 'refs/rug/heads/%s/%s/%s' % (self.revset(), r['remote'], revision)
+			ret['bookmark'] = 'refs/rug/bookmarks/%s/%s/%s' % (self.revset(), r['remote'], revision)
+			ret['bookmark_index'] = 'refs/rug/bookmark_index'
 			ret['remote'] = '%s/%s' % (r['remote'], revision)
 
 		return ret
@@ -186,7 +186,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		#Checkout manifest manifest
 		if revset is None:
 			revset = self.revset()
-		#Always throw away local gitri changes - uncommitted changes to the manifest.xml file are lost
+		#Always throw away local rug changes - uncommitted changes to the manifest.xml file are lost
 		self.manifest_repo.checkout(revset, force=True)
 
 		#reread manifest
@@ -215,15 +215,15 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 				branches = self.get_branches(r)
 
-				#create gitri and bookmark branches if they don't exist
+				#create rug and bookmark branches if they don't exist
 				#branches are fully qualified ('refs/...') branch names, so use update_ref
 				#instead of create_branch
-				for b in ['gitri', 'bookmark']:
+				for b in ['rug', 'bookmark']:
 					if not repo.valid_ref(branches[b]):
 						repo.update_ref(branches[b], branches['remote'])
 
 				#create and checkout the live branch
-				repo.update_ref(branches['live_plumbing'], branches['gitri'])
+				repo.update_ref(branches['live_plumbing'], branches['rug'])
 				repo.checkout(branches['live_porcelain'])
 
 		return 'revset %s checked out' % revset
@@ -235,7 +235,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		repo = R.clone(url, dir=abs_path, remote=r['remote'], rev=r.get('revision', None))
 		r['repo'] = repo
 		branches = self.get_branches(r)
-		for b in ['live_plumbing', 'gitri', 'bookmark']:
+		for b in ['live_plumbing', 'rug', 'bookmark']:
 			repo.update_ref(branches[b], branches['remote'])
 
 		repo.checkout(branches['live_porcelain'])
@@ -313,7 +313,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 						else:
 							repo.update_ref(branches['bookmark_index'], branches['remote'])
 				#Fail
-				elif repo.head() != branches['gitri']:
+				elif repo.head() != branches['rug']:
 					output.append('%s has changed branches and cannot be safely updated. Skipping this repo.' % r['name'])
 				else:
 					#Weird stuff has happened - right branch, wrong relationship to bookmark
@@ -344,7 +344,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 					repo = R(path)
 					break
 			if repo is None:
-				raise GitriError('unrecognized repo %s' % dir)
+				raise RugError('unrecognized repo %s' % dir)
 			else:
 				repos[path] = {'path': path}
 				head = repo.head()
@@ -360,11 +360,11 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 			#TODO: revise logic here to take care of shas/branch names, branches that have changed sha
 			if repo.valid_sha(head):
 				if r['revision'] == head:
-					raise GitriError('no change to repo %s' % dir)
+					raise RugError('no change to repo %s' % dir)
 			else:
 				branches = self.get_branches(r)
-				if repo.rev_parse(branches['gitri']) == repo.rev_parse(head):
-					raise GitriError('no change to repo %s' % dir)
+				if repo.rev_parse(branches['rug']) == repo.rev_parse(head):
+					raise RugError('no change to repo %s' % dir)
 
 			if repos[path].has_key('revision') or (default.get('revision') != head):
 				repos[path]['revision'] = head
@@ -388,7 +388,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		for r in self.repos.values():
 			repo = r['repo']
 			branches = self.get_branches(r)
-			repo.update_ref(branches['gitri'], branches['live_plumbing'])
+			repo.update_ref(branches['rug'], branches['live_plumbing'])
 
 			if repo.valid_ref(branches['bookmark_index'], include_sha=False):
 				repo.update_ref(branches['bookmark'], branches['bookmark_index'])
@@ -402,7 +402,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		if remote is None:
 			remote = 'origin'
 		if not remote in self.manifest_repo.remote_list():
-			raise GitriError('unrecognized remote %s' % remote)
+			raise RugError('unrecognized remote %s' % remote)
 
 		#TODO: use manifest.read with apply_default=False
 		self.read_manifest()
@@ -415,14 +415,14 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		unpub_repos = []
 		for r in self.repos.values():
 			if r.get('unpublished', False):
-				#TODO: verify correctness & consistency of path functions/formats throughout gitri
+				#TODO: verify correctness & consistency of path functions/formats throughout rug
 				self.load_repos([r['path']])
 				repo = r['repo']
 
 				if repo.valid_sha(r['revision']):
 					#TODO: PROBLEM: branches pushed as sha_riders may not have heads associated with them,
 					#which means that clones won't pull them down
-					refspec = '%s:refs/%s' % (r['revision'], GITRI_SHA_RIDER)
+					refspec = '%s:refs/%s' % (r['revision'], RUG_SHA_RIDER)
 					force = True
 				else:
 					refspec = r['revision']
@@ -437,7 +437,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		#TODO: We don't always need to push manifest repo
 		manifest_revision = self.manifest_repo.head()
 		if self.manifest_repo.valid_sha(manifest_revision):
-			manifest_refspec = '%s:refs/%s' % (manifest_revision, GITRI_SHA_RIDER)
+			manifest_refspec = '%s:refs/%s' % (manifest_revision, RUG_SHA_RIDER)
 			manifest_force = True
 		else:
 			manifest_refspec = manifest_revision
@@ -451,7 +451,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 		#Error if we can't publish anything
 		if not ready:
-			raise GitriError('\n'.join(error))
+			raise RugError('\n'.join(error))
 
 		#Push unpublished remotes
 		for (r, repo, refspec, force) in unpub_repos:
@@ -475,10 +475,10 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		#TODO: we've taken steps to predict errors, but failure can still happen.  Need to
 		#leave the repo in a consistent state if that happens
 		if self.manifest_repo.dirty():
-			self.commit(message="Gitri publish commit")
+			self.commit(message="Rug publish commit")
 			manifest_revision = self.manifest_repo.head()
 			if self.manifest_repo.valid_sha(manifest_revision):
-				manifest_refspec = '%s:refs/%s' % (manifest_revision, GITRI_SHA_RIDER)
+				manifest_refspec = '%s:refs/%s' % (manifest_revision, RUG_SHA_RIDER)
 				manifest_force = True
 			else:
 				manifest_refspec = manifest_revision
@@ -492,7 +492,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 	#def reset(self, optlist=[], repos=None):
 	#	if repos is None:
 	#		repos = self.repos
-	#	gitri_branch = 'gitri/%s/%s' % (self.origin(), self.revset())
+	#	rug_branch = 'rug/%s/%s' % (self.origin(), self.revset())
 	#
 	#	if optlist.has_key('soft'):
 	#		mode = git.Repo.SOFT
@@ -502,14 +502,14 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 	#		mode = git.Repo.HARD
 	#	
 	#	for r in repos:
-	#		r.checkout(gitri_branch, mode = mode)
+	#		r.checkout(rug_branch, mode = mode)
 
 Project.register_vcs('git', git.Repo)
 
 #The following code was necessary before manual clone was implemented in order to
 #clone into a non-empty directory
 #if os.path.exists(path) and (not os.path.isdir(path)):
-#	GitriError('path %s already exists and is not a directory' % (path,))
+#	RugError('path %s already exists and is not a directory' % (path,))
 #elif os.path.isdir(path) and (os.listdir(path) != []):
 #	tmp_path = tempfile(dir='.')
 #	#todo: proper path join (detect foreign OS)

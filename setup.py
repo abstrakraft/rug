@@ -6,17 +6,17 @@ except ImportError:
     from setuptools import setup, find_packages
 
 setup(
-    name='gitri',
+    name='rug',
     version="0.0",
     description='manage repositories of repositories',
-    url='https://github.com/abstrakraft/gitri',
+    url='https://github.com/abstrakraft/rug',
     license='GPLv3',
     install_requires=[],
     packages=find_packages(exclude=['ez_setup']),
     include_package_data=True,
-    package_data={'gitri': ['i18n/*/LC_MESSAGES/*.mo']},
+    package_data={'rug': ['i18n/*/LC_MESSAGES/*.mo']},
     entry_points="""
 [console_scripts]
-gitri = gitri.gitri:main
+rug = rug.rug:main
 """,
 )
