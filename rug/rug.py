@@ -2,6 +2,9 @@ import sys
 import getopt
 from project import Project, RugError
 
+def init(optlist={}, dir=None):
+	return Project.init(dir)
+
 def clone(optlist={}, url=None, dir=None, revset=None):
 	if not url:
 		raise RugError('url must be specified')
@@ -46,6 +49,7 @@ def publish(proj, optlist={}, remote=None):
 
 #(function, pass project flag, options)
 rug_commands = {
+	'init': (init, False, ''),
 	'clone': (clone, False, ''),
 	'checkout': (checkout, True, ''),
 	'fetch': (fetch, True, ''),

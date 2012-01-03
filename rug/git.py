@@ -60,6 +60,18 @@ class Repo(object):
 			(os.path.exists(dir) and (shell_cmd(GIT, ['config', 'core.bare'], cwd=dir, raise_errors=False)[1].lower() == 'true'))
 
 	@classmethod
+	def init(cls, dir=None, bare=None):
+		args = ['init']
+		if bare: args.append('-b')
+		if dir: args.append(dir)
+
+		shell_cmd(GIT, args)
+		if dir is None:
+			return cls('.')
+		else:
+			return cls(dir)
+
+	@classmethod
 	def clone(cls, url, dir=None, remote=None, rev=None, local_branch=None):
 		if remote is None:
 			remote = 'origin'

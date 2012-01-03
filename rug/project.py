@@ -78,6 +78,22 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		raise InvalidProjectError('not a valid rug project')
 
 	@classmethod
+	def init(cls, dir):
+		'Project.init -- initialize a new rug repository'
+
+		if dir == None:
+			dir = '.'
+
+		if cls.valid_project(dir):
+			raise RugError('%s is an existing rug project' % dir)
+
+		os.makedirs(os.path.join(dir, RUG_DIR))
+		git.Repo.init(os.path.join(dir, RUG_DIR, 'manifest'))
+		manifest.write(os.path.join(dir, RUG_DIR, 'manifest', 'manifest.xml'), {}, {}, {})
+
+		return ''
+
+	@classmethod
 	def clone(cls, url, dir=None, remote=None, revset=None):
 		'Project.clone -- clone an existing rug repository'
 

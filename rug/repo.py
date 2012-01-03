@@ -4,6 +4,11 @@ class Repo(object):
 	valid_repo = project.Project.valid_project
 
 	@classmethod
+	def init(cls, dir=None):
+		project.Project.init(dir=dir)
+		return cls(dir)
+
+	@classmethod
 	def clone(cls, url, dir=None, remote=None, rev=None):
 		project.Project.clone(url, dir=dir, remote=remote, revset=rev)
 		return cls(dir)
