@@ -24,7 +24,7 @@ class Repo(object):
 			'valid_ref': mr.valid_ref,
 			'update_ref': mr.update_ref,
 			'head': mr.head,
-			'rev_parse': mr.head,
+			'rev_parse': mr.rev_parse,
 			'symbolic_ref': mr.symbolic_ref,
 			'is_descendant': mr.is_descendant,
 			'can_fastforward': mr.can_fastforward,
