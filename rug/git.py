@@ -174,6 +174,11 @@ class Repo(object):
 
 		return self.git_cmd(args)
 
+	def add(self, *files):
+		args = ['add']
+		args.extend(files)
+		return self.git_cmd(args)
+
 	def commit(self, message, all=False):
 		args = ['commit']
 		if all: args.append('-a')

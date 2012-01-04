@@ -88,8 +88,10 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 			raise RugError('%s is an existing rug project' % dir)
 
 		os.makedirs(os.path.join(dir, RUG_DIR))
-		git.Repo.init(os.path.join(dir, RUG_DIR, 'manifest'))
+		mr = git.Repo.init(os.path.join(dir, RUG_DIR, 'manifest'))
 		manifest.write(os.path.join(dir, RUG_DIR, 'manifest', 'manifest.xml'), {}, {}, {})
+		mr.add('manifest.xml')
+		mr.commit('Initial commit')
 
 		return ''
 
@@ -173,7 +175,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		'delete a revset'
 		self.manifest_repo.branch_delete(dst, force)
 
-	def status(self):
+	def status(self, porcelain=True):
 		#TODO: this is file status - also need repo status
 		self.read_manifest()
 		self.load_repos()
