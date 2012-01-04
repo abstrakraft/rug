@@ -4,7 +4,17 @@ _another repository of repositories implementation, inspired by [git-repo](http:
 
 _note that this document is a plan of operation, and that most of the commands and workflows in it are not yet implemented_
 
-_formerly known as gitri
+_formerly known as gitri_
+
+## Installing and Checking Out the Rug Test Project ##
+
+	From the root of your rug repository (the directory containing this file), run
+
+		python setup.py install
+
+	Then, to clone the test repository, run
+
+		rug clone https://github.com/abstrakraft/rug-test-project.git
 
 ## Nomenclature ##
 - __repository__: a git (or other VCS) repository.  __repo__ is accepted shorthand.
