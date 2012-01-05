@@ -278,6 +278,11 @@ class Repo(object):
 
 		return self.git_cmd(args, raise_errors=False, print_output=False)
 
+	def add_ignore(self, pattern):
+		f = open(os.path.join(self.dir, GIT_DIR, 'info', 'exclude'), 'a')
+		f.write(pattern + '\n')
+		f.close()
+
 	#Query functions
 	def status(self, porcelain=True):
 		#TODO: parse status output, or leave as text?

@@ -5,6 +5,7 @@ import xml.dom.minidom
 
 import manifest
 import git
+import hierarchy
 
 class RugError(StandardError):
 	pass
@@ -15,6 +16,7 @@ class InvalidProjectError(RugError):
 RUG_DIR = '.rug'
 #TODO: should this be configurable or in the manifest?
 RUG_SHA_RIDER = 'rug/sha_rider'
+RUG_DEFAULT_DEFAULT = {'revision': 'master', 'vcs': 'git'}
 
 class Project(object):
 	vcs_class = {}
@@ -40,8 +42,7 @@ class Project(object):
 	def read_manifest(self):
 		'''Project.read_manifest() -- read the manifest file.
 Project methods should only call this function if necessary.'''
-		default_default = {'revision': 'master', 'vcs': 'git'}
-		(self.remotes, self.repos) = manifest.read(self.manifest_filename, default_default=default_default)
+		(self.remotes, self.repos) = manifest.read(self.manifest_filename, default_default=RUG_DEFAULT_DEFAULT)
 
 	def load_repos(self, repos=None):
 		'''Project.load_repos(repos=self.repos) -- load repo objects for repos.
@@ -98,7 +99,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		if bare:
 			rug_dir = dir
 		else:
-			rug_dir = os.path.join(self.dir, RUG_DIR)
+			rug_dir = os.path.join(dir, RUG_DIR)
 		manifest_dir = os.path.join(rug_dir, 'manifest')
 		manifest_filename = os.path.join(manifest_dir, 'manifest.xml')
 
@@ -130,7 +131,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		if bare:
 			rug_dir = dir
 		else:
-			rug_dir = os.path.join(self.dir, RUG_DIR)
+			rug_dir = os.path.join(dir, RUG_DIR)
 		manifest_dir = os.path.join(rug_dir, 'manifest')
 		manifest_filename = os.path.join(manifest_dir, 'manifest.xml')
 
@@ -240,7 +241,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 						prefix = r['path']
 						if prefix[-1] != os.path.sep:
 							prefix += os.path.sep
-					stat.extend([s[:3]+prefix+s[3:] for s in r_stat.split('\n')])
+					stat.extend(['%s\t%s\t%s' % (s[:2], prefix+s[3:], r['path']) for s in r_stat.split('\n')])
 			else:
 				stat.append(' D ' + r['path'])
 
@@ -275,13 +276,14 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		if not self.bare:
 			self.load_repos()
 
+			sub_repos = hierarchy.hierarchy(self.repos.keys())
 			for r in self.repos.values():
 				url = self.remotes[r['remote']]['fetch'] + '/' + r['name']
 
 				#if the repo doesn't exist, clone it
 				repo = r['repo']
 				if not repo:
-					self.create_repo(r)
+					self.create_repo(r, sub_repos[r['path']])
 				else:
 					#Verify remotes
 					if r['remote'] not in repo.remote_list():
@@ -310,13 +312,17 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 		return 'revset %s checked out' % revset
 
-	def create_repo(self, r):
+	def create_repo(self, r, sub_repos):
 		if self.bare:
 			raise RugError('Invalid operation for bare project')
 		abs_path = os.path.abspath(os.path.join(self.dir, r['path']))
 		url = self.remotes[r['remote']]['fetch'] + '/' + r['name']
 		R = self.vcs_class[r['vcs']]
 		repo = R.clone(url, dir=abs_path, remote=r['remote'], rev=r.get('revision', None))
+		if r['path'] == '.':
+			repo.add_ignore(RUG_DIR)
+		for sr in sub_repos:
+			repo.add_ignore(os.path.relpath(sr, r['path']))
 		r['repo'] = repo
 		branches = self.get_branches(r)
 		for b in ['live_plumbing', 'rug', 'bookmark']:
@@ -363,6 +369,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 		output = []
 
+		sub_repos = hierarchy.hierarchy(self.repos.keys())
 		for r in repos:
 			repo = r['repo']
 			if repo:
@@ -406,7 +413,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 					#Weird stuff has happened - right branch, wrong relationship to bookmark
 					output.append('The current branch in %s has been in altered in an unusal way and must be manually updated.' % r['name'])
 			else:
-				self.create_repo(r)
+				self.create_repo(r, sub_repos[r['path']])
 
 		return '\n'.join(output)
 

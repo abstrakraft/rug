@@ -50,4 +50,7 @@ class Repo(object):
 		#TODO: repo Project doesn't currently support fetching a particular source
 		self.project.fetch()
 
+	def add_ignore(self, pattern):
+		raise NotImplemented('ignoring through rug repos not implemented')
+
 project.Project.register_vcs('rug', Repo)
