@@ -172,19 +172,19 @@ class Repo(object):
 		args = ['fetch', '-v']
 		if remote: args.append(remote)
 
-		return self.git_cmd(args)
+		self.git_cmd(args)
 
 	def add(self, *files):
 		args = ['add']
 		args.extend(files)
-		return self.git_cmd(args)
+		self.git_cmd(args)
 
 	def commit(self, message, all=False):
 		args = ['commit']
 		if all: args.append('-a')
 		args.extend(['-m', message])
 
-		return self.git_cmd(args)
+		self.git_cmd(args)
 
 	def push(self, remote=None, branch=None, force=False):
 		args = ['push']
@@ -192,7 +192,7 @@ class Repo(object):
 		if remote: args.append(remote)
 		if branch: args.append(branch)
 
-		return self.git_cmd(args)
+		self.git_cmd(args)
 
 	def test_push(self, remote=None, branch=None, force=False):
 		args = ['push', '-n']
