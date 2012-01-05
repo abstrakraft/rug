@@ -419,29 +419,29 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 		return '\n'.join(output)
 
-	def add(self, dir, name=None, remote=None):
+	def add(self, path, name=None, remote=None):
 		if self.bare:
 			raise NotImplementedError('add not yet implemented for bare projects')
 		#TODO:options and better logic to add shas vs branch names
 		#TODO:handle lists of dirs
+		#TODO:interpret dirs with respect to what parent? cwd? project root? 
 		#self.read_manifest()
 
 		(remotes, repos, default) = manifest.read(self.manifest_filename, apply_default=False)
 
-		abs_path = os.path.abspath(dir)
-		path = os.path.relpath(abs_path, self.dir)
 		r = self.repos.get(path, None)
 		if r is None:
 			if name is None:
 				raise RugError('new repos must specify a name')
 			repo = None
 			#TODO: rug needs to take priority here, as rug repos with sub-repos at '.' will look like the sub-repo vcs as well as a rug repo
+			abs_path = os.path.join(self.dir, path)
 			for (vcs, R) in self.vcs_class.items():
-				if R.valid_repo(path):
-					repo = R(path)
+				if R.valid_repo(abs_path):
+					repo = R(abs_path)
 					break
 			if repo is None:
-				raise RugError('unrecognized repo %s' % dir)
+				raise RugError('unrecognized repo %s' % path)
 			else:
 				repos[path] = {'name': name, 'path': path}
 				head = repo.head()
@@ -459,11 +459,11 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 			#TODO: revise logic here to take care of shas/branch names, branches that have changed sha
 			if repo.valid_sha(head):
 				if r['revision'] == head:
-					raise RugError('no change to repo %s' % dir)
+					raise RugError('no change to repo %s' % path)
 			else:
 				branches = self.get_branches(r)
 				if repo.rev_parse(branches['rug']) == repo.rev_parse(head):
-					raise RugError('no change to repo %s' % dir)
+					raise RugError('no change to repo %s' % path)
 
 			if repos[path].has_key('revision') or (default.get('revision') != head):
 				repos[path]['revision'] = head

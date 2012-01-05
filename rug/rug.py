@@ -1,5 +1,6 @@
 import sys
 import getopt
+import os.path
 from project import Project, RugError
 
 def init(optdict={}, dir=None):
@@ -36,7 +37,11 @@ def add(proj, optdict={}, dir=None, name=None, remote=None):
 	if not dir:
 		raise RugError('unspecified directory')
 
-	return proj.add(dir, name, remote)
+	#Command-line interprets relative to cwd,
+	#but python interface is relative to project root
+	abs_path = os.path.abspath(dir)
+	path = os.path.relpath(abs_path, proj.dir)
+	return proj.add(path, name, remote)
 
 def commit(proj, optdict={}, message=None):
 	if not message:
