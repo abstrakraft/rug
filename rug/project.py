@@ -38,6 +38,7 @@ class Project(object):
 		self.manifest_dir = os.path.join(self.rug_dir, 'manifest')
 		self.manifest_filename = os.path.join(self.manifest_dir, 'manifest.xml')
 		self.manifest_repo = git.Repo(self.manifest_dir)
+		self.read_manifest()
 
 	def read_manifest(self):
 		'''Project.read_manifest() -- read the manifest file.
@@ -226,7 +227,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 			raise NotImplementedError('status not implemented for bare projects')
 
 		#TODO: this is file status - also need repo status
-		self.read_manifest()
+		#self.read_manifest()
 		self.load_repos()
 
 		stat = []
@@ -248,7 +249,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		return '\n'.join(stat)
 
 	def remote_list(self):
-		self.read_manifest()
+		#self.read_manifest()
 
 		return '\n'.join(self.remotes.keys())
 
@@ -258,6 +259,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 			remotes[remote] = {'name':remote}
 		remotes[remote]['fetch'] = fetch
 		manifest.write(self.manifest_filename, remotes, repos, default)
+		self.read_manifest()
 
 		return 'remote %s added' % remote
 
@@ -331,7 +333,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		repo.checkout(branches['live_porcelain'])
 
 	def fetch(self, repos=None):
-		self.read_manifest()
+		#self.read_manifest()
 
 		self.manifest_repo.fetch()
 
@@ -354,7 +356,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 	def update(self, repos=None):
 		raise NotImplementedError('Update not yet implemented')
 
-		self.read_manifest()
+		#self.read_manifest()
 
 		if repos is None:
 			self.load_repos()
@@ -422,7 +424,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 			raise NotImplementedError('add not yet implemented for bare projects')
 		#TODO:options and better logic to add shas vs branch names
 		#TODO:handle lists of dirs
-		self.read_manifest()
+		#self.read_manifest()
 
 		(remotes, repos, default) = manifest.read(self.manifest_filename, apply_default=False)
 
@@ -433,6 +435,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 			if name is None:
 				raise RugError('new repos must specify a name')
 			repo = None
+			#TODO: rug needs to take priority here, as rug repos with sub-repos at '.' will look like the sub-repo vcs as well as a rug repo
 			for (vcs, R) in self.vcs_class.items():
 				if R.valid_repo(path):
 					repo = R(path)
@@ -467,11 +470,12 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 			repos[path]['unpublished'] = 'true'
 
 		manifest.write(self.manifest_filename, remotes, repos, default)
+		self.read_manifest()
 
 		return "%s added to manifest" % path
 
 	def commit(self, message):
-		self.read_manifest()
+		#self.read_manifest()
 
 		#TODO: currently, if a branch is added, we commit the branch as it exists at commit time
 		#rather than add time.  Correct operation should be determined.
@@ -504,7 +508,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 			raise RugError('unrecognized remote %s' % remote)
 
 		#TODO: use manifest.read with apply_default=False
-		self.read_manifest()
+		#self.read_manifest()
 
 		error = []
 		output = []
@@ -587,6 +591,8 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 				manifest_force = False
 		self.manifest_repo.push(remote, manifest_refspec, force=manifest_force)
 		output.append('manifest branch %s pushed to %s' % (manifest_revision, r['remote']))
+
+		self.read_manifest()
 
 		return '\n'.join(output)
 
