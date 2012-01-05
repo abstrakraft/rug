@@ -32,11 +32,11 @@ def revset(proj, optlist={}, dst=None, src=None):
 		else:
 			return proj.revset_create(dst, src)
 
-def add(proj, optlist={}, dir=None):
+def add(proj, optlist={}, dir=None, name=None, remote=None):
 	if not dir:
 		raise RugError('unspecified directory')
 
-	return proj.add(dir)
+	return proj.add(dir, name, remote)
 
 def commit(proj, optlist={}, message=None):
 	if not message:
@@ -46,6 +46,12 @@ def commit(proj, optlist={}, message=None):
 
 def publish(proj, optlist={}, remote=None):
 	return proj.publish(remote)
+
+def remote_list(proj, optlist={}):
+	return proj.remote_list()
+
+def remote_add(proj, optlist={}, remote=None, fetch=None):
+	return proj.remote_add(remote, fetch)
 
 #(function, pass project flag, options)
 rug_commands = {
@@ -59,6 +65,8 @@ rug_commands = {
 	'add': (add, True, ''),
 	'commit': (commit, True, ''),
 	'publish': (publish, True, ''),
+	'remote_list': (remote_list, True, ''),
+	'remote_add': (remote_add, True, ''),
 	#'reset': (Project.reset, True, ['soft', 'mixed', 'hard']),
 	}
 

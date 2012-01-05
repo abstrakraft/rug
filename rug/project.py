@@ -28,14 +28,14 @@ class Project(object):
 		#Create convenient properties
 		self.rug_dir = os.path.join(self.dir, RUG_DIR)
 		self.manifest_dir = os.path.join(self.rug_dir, 'manifest')
+		self.manifest_filename = os.path.join(self.manifest_dir, 'manifest.xml')
 		self.manifest_repo = git.Repo(self.manifest_dir)
 
 	def read_manifest(self):
 		'''Project.read_manifest() -- read the manifest file.
 Project methods should only call this function if necessary.'''
 		default_default = {'revision': 'master', 'vcs': 'git'}
-		(self.remotes, self.repos) = manifest.read(os.path.join(self.manifest_dir, 'manifest.xml'),
-			default_default=default_default)
+		(self.remotes, self.repos) = manifest.read(self.manifest_filename, default_default=default_default)
 
 	def load_repos(self, repos=None):
 		'''Project.load_repos(repos=self.repos) -- load repo objects for repos.
@@ -87,10 +87,13 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		if cls.valid_project(dir):
 			raise RugError('%s is an existing rug project' % dir)
 
-		os.makedirs(os.path.join(dir, RUG_DIR))
-		mr = git.Repo.init(os.path.join(dir, RUG_DIR, 'manifest'))
-		manifest.write(os.path.join(dir, RUG_DIR, 'manifest', 'manifest.xml'), {}, {}, {})
-		mr.add('manifest.xml')
+		rug_dir = os.path.join(dir, RUG_DIR)
+		manifest_dir = os.path.join(rug_dir, 'manifest')
+		manifest_filename = os.path.join(manifest_dir, 'manifest.xml')
+
+		mr = git.Repo.init(manifest_dir)
+		manifest.write(manifest_filename, {}, {}, {})
+		mr.add(os.path.basename(manifest_filename))
 		mr.commit('Initial commit')
 
 		return ''
@@ -113,12 +116,15 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		if os.path.exists(dir):
 			raise RugError('Directory already exists')
 
+		rug_dir = os.path.join(dir, RUG_DIR)
+		manifest_dir = os.path.join(rug_dir, 'manifest')
+		manifest_filename = os.path.join(manifest_dir, 'manifest.xml')
+
 		#clone manifest repo into rug directory
-		git.Repo.clone(url, dir=os.path.join(dir, RUG_DIR, 'manifest'), remote=remote, rev=revset)
+		git.Repo.clone(url, dir=manifest_dir, remote=remote, rev=revset)
 
 		#verify valid manifest
-		manifest_src = os.path.join(dir, RUG_DIR, 'manifest', 'manifest.xml')
-		if not os.path.exists(manifest_src):
+		if not os.path.exists(manifest_filename):
 			raise RugError('invalid manifest repo: no manifest.xml')
 
 		output = ['%s cloned into %s' % (url, dir)]
@@ -160,8 +166,17 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 		return ret
 
-	def remote_add(self, remote, url):
+	def source_list(self):
+		return self.manifest_repo.remote_list()
+
+	def source_add(self, remote, url):
 		return self.manifest_repo.remote_add(remote, url)
+
+	def source_set_url(self, remote, url):
+		return self.manifest_repo.remote_set_url(remote, url)
+
+	def source_set_head(self, remote):
+		return self.manifest_repo.remote_set_head(remote)
 
 	def revset(self):
 		'return the name of the current revset'
@@ -197,6 +212,20 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 				stat.append(' D ' + r['path'])
 
 		return '\n'.join(stat)
+
+	def remote_list(self):
+		self.read_manifest()
+
+		return '\n'.join(self.remotes.keys())
+
+	def remote_add(self, remote, fetch):
+		(remotes, repos, default) = manifest.read(self.manifest_filename, apply_default=False)
+		if not remotes.has_key(remote):
+			remotes[remote] = {'name':remote}
+		remotes[remote]['fetch'] = fetch
+		manifest.write(self.manifest_filename, remotes, repos, default)
+
+		return 'remote %s added' % remote
 
 	def checkout(self, revset=None):
 		'check out a revset'
@@ -341,33 +370,33 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 		return '\n'.join(output)
 
-	def add(self, dir):
+	def add(self, dir, name=None, remote=None):
 		#TODO:options and better logic to add shas vs branch names
 		#TODO:handle lists of dirs
 		self.read_manifest()
 
-		filename = os.path.join(self.manifest_dir, 'manifest.xml')
-		(remotes, repos, default) = manifest.read(filename, apply_default=False)
+		(remotes, repos, default) = manifest.read(self.manifest_filename, apply_default=False)
 
 		abs_path = os.path.abspath(dir)
 		path = os.path.relpath(abs_path, self.dir)
 		r = self.repos.get(path, None)
 		if r is None:
-			#TODO: pass in remote, name, etc
-			raise NotImplementedError('new repos not yet supported: %s' % dir)
-			#TODO: compare to defaults
+			if name is None:
+				raise RugError('new repos must specify a name')
 			repo = None
-			for (vcs, R) in vcs_class.items():
+			for (vcs, R) in self.vcs_class.items():
 				if R.valid_repo(path):
 					repo = R(path)
 					break
 			if repo is None:
 				raise RugError('unrecognized repo %s' % dir)
 			else:
-				repos[path] = {'path': path}
+				repos[path] = {'name': name, 'path': path}
 				head = repo.head()
-				if head != default['revision']:
+				if head != default.get('revision'):
 					repos[path]['revision'] = head
+				if (remote is not None) and (remote != default.get('remote')):
+					repos[path]['remote'] = remote
 
 				repos[path]['unpublished'] = 'true'
 		else:
@@ -388,7 +417,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 				repos[path]['revision'] = head
 			repos[path]['unpublished'] = 'true'
 
-		manifest.write(filename, remotes, repos, default)
+		manifest.write(self.manifest_filename, remotes, repos, default)
 
 		return "%s added to manifest" % path
 
@@ -477,13 +506,14 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 			output.append('%s: pushed %s to %s' % (r['name'], r['revision'], r['remote']))
 
 		#Rewrite manifest
+		#TODO: rewrite using manifest.read/write
 		unpub_repo_paths = [r['path'] for (r, repo, refspec, force) in unpub_repos]
-		manifest = xml.dom.minidom.parse(os.path.join(self.manifest_dir, 'manifest.xml'))
+		manifest = xml.dom.minidom.parse(self.manifest_filename)
 		xml_repos = manifest.getElementsByTagName('repo')
 		for xr in xml_repos:
 			if xr.attributes['path'].value in unpub_repo_paths:
 				xr.attributes.removeNamedItem('unpublished')
-		file = open(os.path.join(self.manifest_dir, 'manifest.xml'), 'w')
+		file = open(self.manifest_filename, 'w')
 		file.write(manifest.toxml()+'\n')
 		file.close()
 

@@ -3,16 +3,6 @@ import project
 class Repo(object):
 	valid_repo = project.Project.valid_project
 
-	@classmethod
-	def init(cls, dir=None):
-		project.Project.init(dir=dir)
-		return cls(dir)
-
-	@classmethod
-	def clone(cls, url, dir=None, remote=None, rev=None):
-		project.Project.clone(url, dir=dir, remote=remote, revset=rev)
-		return cls(dir)
-
 	def __init__(self, dir):
 		from project import Project
 		self.project = Project(dir)
@@ -28,16 +18,15 @@ class Repo(object):
 			'symbolic_ref': mr.symbolic_ref,
 			'is_descendant': mr.is_descendant,
 			'can_fastforward': mr.can_fastforward,
-			'remote_list': mr.remote_list,
-			'remote_add': mr.remote_add,
-			'remote_set_url': mr.remote_set_url,
-			'remote_set_head': mr.remote_set_head,
+			'remote_list': p.source_list,
+			'remote_add': p.source_add,
+			'remote_set_url': p.source_set_url,
+			'remote_set_head': p.source_set_head,
 			'branch': p.revset,
 			'branch_create': p.revset_create,
 			'status': p.status,
 			'checkout': p.checkout,
 			'commit': p.commit,
-			'fetch': p.fetch,
 			'push': p.publish,
 			'test_push': p.test_publish,
 			'merge': None, #TODO
@@ -46,5 +35,19 @@ class Repo(object):
 		}
 
 		self.__dict__.update(delegated_methods)
+
+	@classmethod
+	def init(cls, dir=None):
+		project.Project.init(dir=dir)
+		return cls(dir)
+
+	@classmethod
+	def clone(cls, url, dir=None, remote=None, rev=None):
+		project.Project.clone(url, dir=dir, remote=remote, revset=rev)
+		return cls(dir)
+
+	def fetch(self, remote=None):
+		#TODO: repo Project doesn't currently support fetching a particular source
+		self.project.fetch()
 
 project.Project.register_vcs('rug', Repo)
