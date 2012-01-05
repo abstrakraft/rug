@@ -25,8 +25,14 @@ class Project(object):
 		if not self.valid_project(self.dir):
 			raise InvalidProjectError('not a valid rug project')
 
+		#Decide if bare
+		self.bare = self.valid_bare_project(self.dir)
+
 		#Create convenient properties
-		self.rug_dir = os.path.join(self.dir, RUG_DIR)
+		if self.bare:
+			self.rug_dir = self.dir
+		else:
+			self.rug_dir = os.path.join(self.dir, RUG_DIR)
 		self.manifest_dir = os.path.join(self.rug_dir, 'manifest')
 		self.manifest_filename = os.path.join(self.manifest_dir, 'manifest.xml')
 		self.manifest_repo = git.Repo(self.manifest_dir)
@@ -42,6 +48,8 @@ Project methods should only call this function if necessary.'''
 Project.read_manifest should be called prior to calling this function.
 Project methods should only call this function if necessary.
 Loads all repos by default, or those repos specified in the repos argument, which may be a list or a dictionary.'''
+		if self.bare:
+			raise RugError('Invalid operation for bare project')
 
 		if repos is None:
 			repos = self.repos
@@ -78,7 +86,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		raise InvalidProjectError('not a valid rug project')
 
 	@classmethod
-	def init(cls, dir):
+	def init(cls, dir, bare=False):
 		'Project.init -- initialize a new rug repository'
 
 		if dir == None:
@@ -87,7 +95,10 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		if cls.valid_project(dir):
 			raise RugError('%s is an existing rug project' % dir)
 
-		rug_dir = os.path.join(dir, RUG_DIR)
+		if bare:
+			rug_dir = dir
+		else:
+			rug_dir = os.path.join(self.dir, RUG_DIR)
 		manifest_dir = os.path.join(rug_dir, 'manifest')
 		manifest_filename = os.path.join(manifest_dir, 'manifest.xml')
 
@@ -99,7 +110,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		return ''
 
 	@classmethod
-	def clone(cls, url, dir=None, remote=None, revset=None):
+	def clone(cls, url, dir=None, remote=None, revset=None, bare=False):
 		'Project.clone -- clone an existing rug repository'
 
 		#TODO: more output
@@ -116,7 +127,10 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		if os.path.exists(dir):
 			raise RugError('Directory already exists')
 
-		rug_dir = os.path.join(dir, RUG_DIR)
+		if bare:
+			rug_dir = dir
+		else:
+			rug_dir = os.path.join(self.dir, RUG_DIR)
 		manifest_dir = os.path.join(rug_dir, 'manifest')
 		manifest_filename = os.path.join(manifest_dir, 'manifest.xml')
 
@@ -136,11 +150,21 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		return '\n'.join(output)
 
 	@classmethod
-	def valid_project(cls, dir):
+	def valid_project(cls, dir, include_bare=True):
 		'Project.valid_project(dir) -- verify the minimum qualities necessary to be called a rug project'
+		return cls.valid_working_project(dir) or include_bare and cls.valid_bare_project(dir)
+
+	@classmethod
+	def valid_working_project(cls, dir):
 		manifest_dir = os.path.join(dir, RUG_DIR, 'manifest')
-		return git.Repo.valid_repo(manifest_dir) and \
-			os.path.exists(os.path.join(manifest_dir, 'manifest.xml'))
+		return git.Repo.valid_repo(manifest_dir) \
+				and os.path.exists(os.path.join(manifest_dir, 'manifest.xml'))
+
+	@classmethod
+	def valid_bare_project(cls, dir):
+		manifest_dir = os.path.join(dir, 'manifest')
+		return git.Repo.valid_repo(manifest_dir) \
+			and os.path.exists(os.path.join(manifest_dir, 'manifest.xml'))
 
 	def get_branches(self, r):
 		revision = r.get('revision', 'HEAD')
@@ -182,6 +206,11 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		'return the name of the current revset'
 		return self.manifest_repo.head()
 
+	def revset_list(self):
+		'return the list of available revsets'
+		#TODO: refs or branches?
+		return '\n'.join(self.manifest_repo.ref_list())
+
 	def revset_create(self, dst, src=None):
 		'create a new revset'
 		self.manifest_repo.branch_create(dst, src)
@@ -191,6 +220,10 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		self.manifest_repo.branch_delete(dst, force)
 
 	def status(self, porcelain=True):
+		#TODO: could add manifest status
+		if self.bare:
+			raise NotImplementedError('status not implemented for bare projects')
+
 		#TODO: this is file status - also need repo status
 		self.read_manifest()
 		self.load_repos()
@@ -238,44 +271,48 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 		#reread manifest
 		self.read_manifest()
-		self.load_repos()
 
-		for r in self.repos.values():
-			url = self.remotes[r['remote']]['fetch'] + '/' + r['name']
+		if not self.bare:
+			self.load_repos()
 
-			#if the repo doesn't exist, clone it
-			repo = r['repo']
-			if not repo:
-				self.create_repo(r)
-			else:
-				#Verify remotes
-				if r['remote'] not in repo.remote_list():
-					repo.remote_add(r['remote'], url)
+			for r in self.repos.values():
+				url = self.remotes[r['remote']]['fetch'] + '/' + r['name']
+
+				#if the repo doesn't exist, clone it
+				repo = r['repo']
+				if not repo:
+					self.create_repo(r)
 				else:
-					#Currently easier to just set the remote URL rather than check and set if different
-					repo.remote_set_url(r['remote'], url)
+					#Verify remotes
+					if r['remote'] not in repo.remote_list():
+						repo.remote_add(r['remote'], url)
+					else:
+						#Currently easier to just set the remote URL rather than check and set if different
+						repo.remote_set_url(r['remote'], url)
 
-				#Fetch from remote
-				#TODO:decide if we should always do this here.  Sometimes have to, since we may not have
-				#seen this remote before
-				repo.fetch(r['remote'])
+					#Fetch from remote
+					#TODO:decide if we should always do this here.  Sometimes have to, since we may not have
+					#seen this remote before
+					repo.fetch(r['remote'])
 
-				branches = self.get_branches(r)
+					branches = self.get_branches(r)
 
-				#create rug and bookmark branches if they don't exist
-				#branches are fully qualified ('refs/...') branch names, so use update_ref
-				#instead of create_branch
-				for b in ['rug', 'bookmark']:
-					if not repo.valid_ref(branches[b]):
-						repo.update_ref(branches[b], branches['remote'])
+					#create rug and bookmark branches if they don't exist
+					#branches are fully qualified ('refs/...') branch names, so use update_ref
+					#instead of create_branch
+					for b in ['rug', 'bookmark']:
+						if not repo.valid_ref(branches[b]):
+							repo.update_ref(branches[b], branches['remote'])
 
-				#create and checkout the live branch
-				repo.update_ref(branches['live_plumbing'], branches['rug'])
-				repo.checkout(branches['live_porcelain'])
+					#create and checkout the live branch
+					repo.update_ref(branches['live_plumbing'], branches['rug'])
+					repo.checkout(branches['live_porcelain'])
 
 		return 'revset %s checked out' % revset
 
 	def create_repo(self, r):
+		if self.bare:
+			raise RugError('Invalid operation for bare project')
 		abs_path = os.path.abspath(os.path.join(self.dir, r['path']))
 		url = self.remotes[r['remote']]['fetch'] + '/' + r['name']
 		R = self.vcs_class[r['vcs']]
@@ -290,24 +327,27 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 	def fetch(self, repos=None):
 		self.read_manifest()
 
-		if repos is None:
-			self.load_repos()
-			repos = self.repos.values()
-		else:
-			#TODO: turn list of strings into repos
-			pass
-
 		self.manifest_repo.fetch()
 
-		for r in repos:
-			repo = r['repo']
-			if repo:
-				repo.fetch(r['remote'])
-				repo.remote_set_head(r['remote'])
+		if not self.bare:
+			if repos is None:
+				self.load_repos()
+				repos = self.repos.values()
+			else:
+				#TODO: turn list of strings into repos
+				pass
+
+			for r in repos:
+				repo = r['repo']
+				if repo:
+					repo.fetch(r['remote'])
+					repo.remote_set_head(r['remote'])
 
 		#TODO:output
 
 	def update(self, repos=None):
+		raise NotImplementedError('Update not yet implemented')
+
 		self.read_manifest()
 
 		if repos is None:
@@ -371,6 +411,8 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		return '\n'.join(output)
 
 	def add(self, dir, name=None, remote=None):
+		if self.bare:
+			raise NotImplementedError('add not yet implemented for bare projects')
 		#TODO:options and better logic to add shas vs branch names
 		#TODO:handle lists of dirs
 		self.read_manifest()
@@ -423,23 +465,26 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 	def commit(self, message):
 		self.read_manifest()
-		self.load_repos()
 
 		#TODO: currently, if a branch is added, we commit the branch as it exists at commit time
 		#rather than add time.  Correct operation should be determined.
 
 		if message is None:
 			message = ""
-		self.manifest_repo.commit(message, all=True)
+		#TODO: what about untracked files?
+		if self.manifest_repo.dirty():
+			self.manifest_repo.commit(message, all=True)
 
-		for r in self.repos.values():
-			repo = r['repo']
-			branches = self.get_branches(r)
-			repo.update_ref(branches['rug'], branches['live_plumbing'])
+		if not self.bare:
+			self.load_repos()
+			for r in self.repos.values():
+				repo = r['repo']
+				branches = self.get_branches(r)
+				repo.update_ref(branches['rug'], branches['live_plumbing'])
 
-			if repo.valid_ref(branches['bookmark_index'], include_sha=False):
-				repo.update_ref(branches['bookmark'], branches['bookmark_index'])
-				repo.branch_delete(branches['bookmark_index'])
+				if repo.valid_ref(branches['bookmark_index'], include_sha=False):
+					repo.update_ref(branches['bookmark'], branches['bookmark_index'])
+					repo.branch_delete(branches['bookmark_index'])
 
 	#TODO: remove this quick hack
 	def test_publish(self, remote=None):
@@ -460,25 +505,27 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		#Verify that we can push to all unpublished remotes
 		ready = True
 		unpub_repos = []
-		for r in self.repos.values():
-			if r.get('unpublished', False):
-				#TODO: verify correctness & consistency of path functions/formats throughout rug
-				self.load_repos([r['path']])
-				repo = r['repo']
 
-				if repo.valid_sha(r['revision']):
-					#TODO: PROBLEM: branches pushed as sha_riders may not have heads associated with them,
-					#which means that clones won't pull them down
-					refspec = '%s:refs/%s' % (r['revision'], RUG_SHA_RIDER)
-					force = True
-				else:
-					refspec = r['revision']
-					force = False
-				#TODO: repo is now in r
-				unpub_repos.append((r, repo, refspec, force))
-				if not repo.test_push(r['remote'], refspec, force=force):
-					error.append('%s: %s cannot be pushed to %s' % (r['name'], r['revision'], r['remote']))
-					ready = False
+		if not self.bare:
+			for r in self.repos.values():
+				if r.get('unpublished', False):
+					#TODO: verify correctness & consistency of path functions/formats throughout rug
+					self.load_repos([r['path']])
+					repo = r['repo']
+
+					if repo.valid_sha(r['revision']):
+						#TODO: PROBLEM: branches pushed as sha_riders may not have heads associated with them,
+						#which means that clones won't pull them down
+						refspec = '%s:refs/%s' % (r['revision'], RUG_SHA_RIDER)
+						force = True
+					else:
+						refspec = r['revision']
+						force = False
+					#TODO: repo is now in r
+					unpub_repos.append((r, repo, refspec, force))
+					if not repo.test_push(r['remote'], refspec, force=force):
+						error.append('%s: %s cannot be pushed to %s' % (r['name'], r['revision'], r['remote']))
+						ready = False
 
 		#Verify that we can push to manifest repo
 		#TODO: We don't always need to push manifest repo
@@ -519,7 +566,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 		#Commit and push manifest
 		#TODO: think about interaction between commit and publish - should commit be required?
-		#TODO:input commit message
+		#TODO: input commit message
 		#TODO: we've taken steps to predict errors, but failure can still happen.  Need to
 		#leave the repo in a consistent state if that happens
 		if self.manifest_repo.dirty():

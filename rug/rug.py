@@ -2,28 +2,28 @@ import sys
 import getopt
 from project import Project, RugError
 
-def init(optlist={}, dir=None):
-	return Project.init(dir)
+def init(optdict={}, dir=None):
+	return Project.init(dir, optdict.has_key('-b'))
 
-def clone(optlist={}, url=None, dir=None, revset=None):
+def clone(optdict={}, url=None, dir=None, revset=None):
 	if not url:
 		raise RugError('url must be specified')
 
-	return Project.clone(url, dir, revset)
+	return Project.clone(url, dir, revset, optdict.has_key('-b'))
 
-def checkout(proj, optlist={}, rev=None):
+def checkout(proj, optdict={}, rev=None):
 	return proj.checkout(rev)
 
-def fetch(proj, optlist={}, repos=None):
+def fetch(proj, optdict={}, repos=None):
 	return proj.fetch(repos)
 
-def update(proj, optlist={}, repos=None):
+def update(proj, optdict={}, repos=None):
 	return proj.update(repos)
 
-def status(proj, optlist={}):
+def status(proj, optdict={}):
 	return proj.status()
 
-def revset(proj, optlist={}, dst=None, src=None):
+def revset(proj, optdict={}, dst=None, src=None):
 	if dst is None:
 		return proj.revset()
 	else:
@@ -32,31 +32,31 @@ def revset(proj, optlist={}, dst=None, src=None):
 		else:
 			return proj.revset_create(dst, src)
 
-def add(proj, optlist={}, dir=None, name=None, remote=None):
+def add(proj, optdict={}, dir=None, name=None, remote=None):
 	if not dir:
 		raise RugError('unspecified directory')
 
 	return proj.add(dir, name, remote)
 
-def commit(proj, optlist={}, message=None):
+def commit(proj, optdict={}, message=None):
 	if not message:
 		raise NotImplementedError('commit message editor not yet implemented') #TODO
 
 	return proj.commit(message)
 
-def publish(proj, optlist={}, remote=None):
+def publish(proj, optdict={}, remote=None):
 	return proj.publish(remote)
 
-def remote_list(proj, optlist={}):
+def remote_list(proj, optdict={}):
 	return proj.remote_list()
 
-def remote_add(proj, optlist={}, remote=None, fetch=None):
+def remote_add(proj, optdict={}, remote=None, fetch=None):
 	return proj.remote_add(remote, fetch)
 
 #(function, pass project flag, options)
 rug_commands = {
-	'init': (init, False, ''),
-	'clone': (clone, False, ''),
+	'init': (init, False, 'b'),
+	'clone': (clone, False, 'b'),
 	'checkout': (checkout, True, ''),
 	'fetch': (fetch, True, ''),
 	'update': (update, True, ''),
@@ -77,10 +77,11 @@ def main():
 	else:
 		cmd = rug_commands[sys.argv[1]]
 		[optlist, args] = getopt.gnu_getopt(sys.argv[2:], cmd[2])
+		optdict = dict(optlist)
 		if cmd[1]:
-			ret = cmd[0](Project.find_project(), optlist, *args)
+			ret = cmd[0](Project.find_project(), optdict, *args)
 		else:
-			ret = cmd[0](optlist, *args)
+			ret = cmd[0](optdict, *args)
 
 		if ret:
 			print ret
