@@ -419,9 +419,8 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 		return '\n'.join(output)
 
-	def add(self, path, name=None, remote=None):
-		if self.bare:
-			raise NotImplementedError('add not yet implemented for bare projects')
+	def add(self, path, name=None, remote=None, rev=None, vcs=None):
+		#TODO: we only pay attention to name, remote, rev, and vcs args for new repos
 		#TODO:options and better logic to add shas vs branch names
 		#TODO:handle lists of dirs
 		#TODO:interpret dirs with respect to what parent? cwd? project root? 
@@ -433,27 +432,42 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		if r is None:
 			if name is None:
 				raise RugError('new repos must specify a name')
-			repo = None
-			#TODO: rug needs to take priority here, as rug repos with sub-repos at '.' will look like the sub-repo vcs as well as a rug repo
-			abs_path = os.path.join(self.dir, path)
-			for (vcs, R) in self.vcs_class.items():
-				if R.valid_repo(abs_path):
-					repo = R(abs_path)
-					repo_vcs = vcs
-					break
-			if repo is None:
-				raise RugError('unrecognized repo %s' % path)
-			else:
-				repos[path] = {'name': name, 'path': path}
-				head = repo.head()
-				if head != default.get('revision'):
-					repos[path]['revision'] = head
-				if (remote is not None) and (remote != default.get('remote')):
-					repos[path]['remote'] = remote
-				if repo_vcs != default.get('vcs'):
-					repos[path]['vcs'] = repo_vcs
+			if remote is None:
+				raise RugError('new repos must specify a remote')
+			if self.bare:
+				if rev is None:
+					raise RugError('new repos in bare projects must specify a rev')
+				if vcs is None:
+					raise RugError('new repos in bare projects must specify a vcs')
 
-				repos[path]['unpublished'] = 'true'
+			abs_path = os.path.join(self.dir, path)
+			if vcs is None:
+				repo = None
+				#TODO: rug needs to take priority here, as rug repos with sub-repos at '.'
+				#will look like the sub-repo vcs as well as a rug repo
+				for (try_vcs, R) in self.vcs_class.items():
+					if R.valid_repo(abs_path):
+						repo = R(abs_path)
+						vcs = try_vcs
+						break
+				if repo is None:
+					raise RugError('unrecognized repo %s' % path)
+			else:
+				if rev is None:
+					repo = vcs_class[vcs](abs_path)
+
+			if rev is None:
+				rev = repo.head()
+
+			repos[path] = {'name': name, 'path': path}
+			if rev != default.get('revision'):
+				repos[path]['revision'] = rev
+			if (remote is not None) and (remote != default.get('remote')):
+				repos[path]['remote'] = remote
+			if vcs != default.get('vcs'):
+				repos[path]['vcs'] = vcs
+
+			repos[path]['unpublished'] = 'true'
 		else:
 			self.load_repos([path])
 			#TODO: check for errors in load_repos
