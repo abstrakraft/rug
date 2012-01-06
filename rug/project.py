@@ -439,6 +439,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 			for (vcs, R) in self.vcs_class.items():
 				if R.valid_repo(abs_path):
 					repo = R(abs_path)
+					repo_vcs = vcs
 					break
 			if repo is None:
 				raise RugError('unrecognized repo %s' % path)
@@ -449,6 +450,8 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 					repos[path]['revision'] = head
 				if (remote is not None) and (remote != default.get('remote')):
 					repos[path]['remote'] = remote
+				if repo_vcs != default.get('vcs'):
+					repos[path]['vcs'] = repo_vcs
 
 				repos[path]['unpublished'] = 'true'
 		else:
@@ -577,6 +580,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 		#Commit and push manifest
 		#TODO: think about interaction between commit and publish - should commit be required?
+		#TODO: uh-oh - publishing/pushing a rug repo changes it's sha!
 		#TODO: input commit message
 		#TODO: we've taken steps to predict errors, but failure can still happen.  Need to
 		#leave the repo in a consistent state if that happens

@@ -27,8 +27,8 @@ class Repo(object):
 			'status': p.status,
 			'checkout': p.checkout,
 			'commit': p.commit,
-			'push': p.publish,
-			'test_push': p.test_publish,
+			#'push': p.publish,
+			#'test_push': p.test_publish,
 			'merge': None, #TODO
 			'dirty': None, #TODO
 			'rebase': None, #TODO
@@ -52,5 +52,13 @@ class Repo(object):
 
 	def add_ignore(self, pattern):
 		raise NotImplemented('ignoring through rug repos not implemented')
+
+	def push(self, remote, branch, force):
+		#TODO: this is a hack to drop the branch and force args, because rug repos don't handle them. Fix
+		return self.project.publish(remote)
+
+	def test_push(self, remote, branch, force):
+		#TODO: this is a hack to drop the branch and force args, because rug repos don't handle them. Fix
+		return self.project.test_publish(remote)
 
 project.Project.register_vcs('rug', Repo)

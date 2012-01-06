@@ -57,12 +57,12 @@ class Repo(object):
 	def valid_repo(cls, dir):
 		#return not shell_cmd(GIT, ['remote', 'show'], cwd)[0]
 		return os.path.exists(os.path.join(dir, GIT_DIR)) or \
-			(os.path.exists(dir) and (shell_cmd(GIT, ['config', 'core.bare'], cwd=dir, raise_errors=False)[1].lower() == 'true'))
+			(os.path.exists(dir) and (shell_cmd(GIT, ['config', 'core.bare'], cwd=dir, raise_errors=False)[1].lower() == 'true\n'))
 
 	@classmethod
 	def init(cls, dir=None, bare=None):
 		args = ['init']
-		if bare: args.append('-b')
+		if bare: args.append('--bare')
 		if dir: args.append(dir)
 
 		shell_cmd(GIT, args)
