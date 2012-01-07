@@ -27,6 +27,7 @@ class Repo(object):
 			'status': p.status,
 			'checkout': p.checkout,
 			'commit': p.commit,
+			'fetch': p.fetch,
 			#'push': p.publish,
 			#'test_push': p.test_publish,
 			'merge': None, #TODO

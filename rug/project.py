@@ -332,10 +332,10 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 		repo.checkout(branches['live_porcelain'])
 
-	def fetch(self, repos=None):
+	def fetch(self, remote, repos=None):
 		#self.read_manifest()
 
-		self.manifest_repo.fetch()
+		self.manifest_repo.fetch(remote)
 
 		if not self.bare:
 			if repos is None:
@@ -420,10 +420,9 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		return '\n'.join(output)
 
 	def add(self, path, name=None, remote=None, rev=None, vcs=None):
-		#TODO: we only pay attention to name, remote, rev, and vcs args for new repos
+		#TODO:we only pay attention to name, remote, rev, and vcs args for new repos
 		#TODO:options and better logic to add shas vs branch names
 		#TODO:handle lists of dirs
-		#TODO:interpret dirs with respect to what parent? cwd? project root? 
 		#self.read_manifest()
 
 		(remotes, repos, default) = manifest.read(self.manifest_filename, apply_default=False)
@@ -468,6 +467,10 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 				repos[path]['vcs'] = vcs
 
 			repos[path]['unpublished'] = 'true'
+
+			#TODO: we don't know if the remote even exists yet, so can't set up all branches
+			#logic elsewhere should be able to handle this possibility (remote & bookmark branches don't exist)
+			update_rug_branch = True
 		else:
 			self.load_repos([path])
 			#TODO: check for errors in load_repos
@@ -488,6 +491,13 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 		manifest.write(self.manifest_filename, remotes, repos, default)
 		self.read_manifest()
+
+		if update_rug_branch:
+			self.load_repos([path])
+			r = self.repos[path]
+			repo = r['repo']
+			branches = self.get_branches(r)
+			repo.update_ref(branches['rug'], rev)
 
 		return "%s added to manifest" % path
 
@@ -550,7 +560,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 						refspec = r['revision']
 						force = False
 					#TODO: repo is now in r
-					unpub_repos.append((r, repo, refspec, force))
+					unpub_repos.append((r, refspec, force))
 					if not repo.test_push(r['remote'], refspec, force=force):
 						error.append('%s: %s cannot be pushed to %s' % (r['name'], r['revision'], r['remote']))
 						ready = False
@@ -576,13 +586,16 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 			raise RugError('\n'.join(error))
 
 		#Push unpublished remotes
-		for (r, repo, refspec, force) in unpub_repos:
+		for (r, refspec, force) in unpub_repos:
+			repo = r['repo']
 			repo.push(r['remote'], refspec, force)
+			branches = self.get_branches(r)
+			repo.update_ref(branches['bookmark'], refspec)
 			output.append('%s: pushed %s to %s' % (r['name'], r['revision'], r['remote']))
 
 		#Rewrite manifest
 		#TODO: rewrite using manifest.read/write
-		unpub_repo_paths = [r['path'] for (r, repo, refspec, force) in unpub_repos]
+		unpub_repo_paths = [r['path'] for (r, refspec, force) in unpub_repos]
 		manifest = xml.dom.minidom.parse(self.manifest_filename)
 		xml_repos = manifest.getElementsByTagName('repo')
 		for xr in xml_repos:
@@ -608,7 +621,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 				manifest_refspec = manifest_revision
 				manifest_force = False
 		self.manifest_repo.push(remote, manifest_refspec, force=manifest_force)
-		output.append('manifest branch %s pushed to %s' % (manifest_revision, r['remote']))
+		output.append('manifest branch %s pushed to %s' % (manifest_revision, remote))
 
 		self.read_manifest()
 
