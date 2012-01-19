@@ -3,9 +3,9 @@ import project
 class Repo(object):
 	valid_repo = project.Project.valid_project
 
-	def __init__(self, dir):
+	def __init__(self, repo_dir):
 		from project import Project
-		self.project = Project(dir)
+		self.project = Project(repo_dir)
 		
 		p = self.project
 		mr = self.project.manifest_repo
@@ -38,14 +38,14 @@ class Repo(object):
 		self.__dict__.update(delegated_methods)
 
 	@classmethod
-	def init(cls, dir=None):
-		project.Project.init(dir=dir)
-		return cls(dir)
+	def init(cls, repo_dir=None):
+		project.Project.init(project_dir=repo_dir)
+		return cls(repo_dir)
 
 	@classmethod
-	def clone(cls, url, dir=None, remote=None, rev=None):
-		project.Project.clone(url, dir=dir, remote=remote, revset=rev)
-		return cls(dir)
+	def clone(cls, url, repo_dir=None, remote=None, rev=None):
+		project.Project.clone(url, project_dir=repo_dir, remote=remote, revset=rev)
+		return cls(repo_dir)
 
 	def fetch(self, remote=None):
 		#TODO: repo Project doesn't currently support fetching a particular source

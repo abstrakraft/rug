@@ -21,8 +21,8 @@ RUG_DEFAULT_DEFAULT = {'revision': 'master', 'vcs': 'git'}
 class Project(object):
 	vcs_class = {}
 
-	def __init__(self, dir):
-		self.dir = os.path.abspath(dir)
+	def __init__(self, project_dir):
+		self.dir = os.path.abspath(project_dir)
 		#Verify validity
 		if not self.valid_project(self.dir):
 			raise InvalidProjectError('not a valid rug project')
@@ -69,13 +69,13 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		cls.vcs_class[vcs] = vcs_class
 
 	@classmethod
-	def find_project(cls, dir = None):
-		'Project.find_project(dir=pwd) -> project -- climb up the directory tree looking for a valid rug project'
+	def find_project(cls, project_dir = None):
+		'Project.find_project(project_dir=pwd) -> project -- climb up the directory tree looking for a valid rug project'
 
-		if dir == None:
-			dir = os.getcwd()
+		if project_dir == None:
+			project_dir = os.getcwd()
 
-		head = dir
+		head = project_dir
 		while head:
 			try:
 				return cls(head)
@@ -88,19 +88,19 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		raise InvalidProjectError('not a valid rug project')
 
 	@classmethod
-	def init(cls, dir, bare=False):
+	def init(cls, project_dir, bare=False):
 		'Project.init -- initialize a new rug repository'
 
-		if dir == None:
-			dir = '.'
+		if project_dir == None:
+			project_dir = '.'
 
-		if cls.valid_project(dir):
-			raise RugError('%s is an existing rug project' % dir)
+		if cls.valid_project(project_dir):
+			raise RugError('%s is an existing rug project' % project_dir)
 
 		if bare:
-			rug_dir = dir
+			rug_dir = project_dir
 		else:
-			rug_dir = os.path.join(dir, RUG_DIR)
+			rug_dir = os.path.join(project_dir, RUG_DIR)
 		manifest_dir = os.path.join(rug_dir, 'manifest')
 		manifest_filename = os.path.join(manifest_dir, 'manifest.xml')
 
@@ -112,59 +112,59 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		return ''
 
 	@classmethod
-	def clone(cls, url, dir=None, remote=None, revset=None, bare=False):
+	def clone(cls, url, project_dir=None, remote=None, revset=None, bare=False):
 		'Project.clone -- clone an existing rug repository'
 
 		#TODO: more output
 
 		#calculate directory
-		if dir == None:
+		if project_dir == None:
 			basename = os.path.basename(url)
 			if len(basename) == 0:
 				basename = os.path.basename(url[:-1])
-			dir = os.path.splitext(basename)[0]
-		dir = os.path.abspath(dir)
+			project_dir = os.path.splitext(basename)[0]
+		project_dir = os.path.abspath(project_dir)
 
 		#verify directory doesn't exist
-		if os.path.exists(dir):
+		if os.path.exists(project_dir):
 			raise RugError('Directory already exists')
 
 		if bare:
-			rug_dir = dir
+			rug_dir = project_dir
 		else:
-			rug_dir = os.path.join(dir, RUG_DIR)
+			rug_dir = os.path.join(project_dir, RUG_DIR)
 		manifest_dir = os.path.join(rug_dir, 'manifest')
 		manifest_filename = os.path.join(manifest_dir, 'manifest.xml')
 
 		#clone manifest repo into rug directory
-		git.Repo.clone(url, dir=manifest_dir, remote=remote, rev=revset)
+		git.Repo.clone(url, repo_dir=manifest_dir, remote=remote, rev=revset)
 
 		#verify valid manifest
 		if not os.path.exists(manifest_filename):
 			raise RugError('invalid manifest repo: no manifest.xml')
 
-		output = ['%s cloned into %s' % (url, dir)]
+		output = ['%s cloned into %s' % (url, project_dir)]
 
 		#checkout revset
-		p = cls(dir)
+		p = cls(project_dir)
 		output.append(p.checkout())
 
 		return '\n'.join(output)
 
 	@classmethod
-	def valid_project(cls, dir, include_bare=True):
-		'Project.valid_project(dir) -- verify the minimum qualities necessary to be called a rug project'
-		return cls.valid_working_project(dir) or include_bare and cls.valid_bare_project(dir)
+	def valid_project(cls, project_dir, include_bare=True):
+		'Project.valid_project(project_dir) -- verify the minimum qualities necessary to be called a rug project'
+		return cls.valid_working_project(project_dir) or include_bare and cls.valid_bare_project(project_dir)
 
 	@classmethod
-	def valid_working_project(cls, dir):
-		manifest_dir = os.path.join(dir, RUG_DIR, 'manifest')
+	def valid_working_project(cls, project_dir):
+		manifest_dir = os.path.join(project_dir, RUG_DIR, 'manifest')
 		return git.Repo.valid_repo(manifest_dir) \
 				and os.path.exists(os.path.join(manifest_dir, 'manifest.xml'))
 
 	@classmethod
-	def valid_bare_project(cls, dir):
-		manifest_dir = os.path.join(dir, 'manifest')
+	def valid_bare_project(cls, project_dir):
+		manifest_dir = os.path.join(project_dir, 'manifest')
 		return git.Repo.valid_repo(manifest_dir) \
 			and os.path.exists(os.path.join(manifest_dir, 'manifest.xml'))
 
@@ -320,7 +320,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		abs_path = os.path.abspath(os.path.join(self.dir, r['path']))
 		url = self.remotes[r['remote']]['fetch'] + '/' + r['name']
 		R = self.vcs_class[r['vcs']]
-		repo = R.clone(url, dir=abs_path, remote=r['remote'], rev=r.get('revision', None))
+		repo = R.clone(url, repo_dir=abs_path, remote=r['remote'], rev=r.get('revision', None))
 		if r['path'] == '.':
 			repo.add_ignore(RUG_DIR)
 		for sr in sub_repos:

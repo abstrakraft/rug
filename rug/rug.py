@@ -3,14 +3,14 @@ import getopt
 import os.path
 from project import Project, RugError
 
-def init(optdict={}, dir=None):
-	return Project.init(dir, optdict.has_key('-b'))
+def init(optdict={}, project_dir=None):
+	return Project.init(project_dir, optdict.has_key('-b'))
 
-def clone(optdict={}, url=None, dir=None, revset=None):
+def clone(optdict={}, url=None, project_dir=None, revset=None):
 	if not url:
 		raise RugError('url must be specified')
 
-	return Project.clone(url, dir, revset, optdict.has_key('-b'))
+	return Project.clone(url, project_dir, revset, optdict.has_key('-b'))
 
 def checkout(proj, optdict={}, rev=None):
 	return proj.checkout(rev)
@@ -33,13 +33,13 @@ def revset(proj, optdict={}, dst=None, src=None):
 		else:
 			return proj.revset_create(dst, src)
 
-def add(proj, optdict={}, dir=None, name=None, remote=None, rev=None, vcs=None):
-	if not dir:
+def add(proj, optdict={}, project_dir=None, name=None, remote=None, rev=None, vcs=None):
+	if not project_dir:
 		raise RugError('unspecified directory')
 
 	#Command-line interprets relative to cwd,
 	#but python interface is relative to project root
-	abs_path = os.path.abspath(dir)
+	abs_path = os.path.abspath(project_dir)
 	path = os.path.relpath(abs_path, proj.dir)
 	return proj.add(path, name, remote, rev, vcs)
 

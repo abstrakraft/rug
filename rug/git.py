@@ -42,8 +42,8 @@ def shell_cmd(cmd, args, cwd=None, raise_errors=True, print_output=False):
 		return (ret, out, err)
 
 class Repo(object):
-	def __init__(self, dir):
-		d = os.path.abspath(dir)
+	def __init__(self, repo_dir):
+		d = os.path.abspath(repo_dir)
 		if not self.valid_repo(d):
 			raise InvalidRepoError('not a valid git repository')
 		self.dir = d
@@ -54,25 +54,24 @@ class Repo(object):
 			self.git_dir = os.path.join(self.dir, GIT_DIR)
 
 	@classmethod
-	def valid_repo(cls, dir):
-		#return not shell_cmd(GIT, ['remote', 'show'], cwd)[0]
-		return os.path.exists(os.path.join(dir, GIT_DIR)) or \
-			(os.path.exists(dir) and (shell_cmd(GIT, ['config', 'core.bare'], cwd=dir, raise_errors=False)[1].lower() == 'true\n'))
+	def valid_repo(cls, repo_dir):
+		return os.path.exists(os.path.join(repo_dir, GIT_DIR)) or \
+			(os.path.exists(repo_dir) and (shell_cmd(GIT, ['config', 'core.bare'], cwd=repo_dir, raise_errors=False)[1].lower() == 'true\n'))
 
 	@classmethod
-	def init(cls, dir=None, bare=None):
+	def init(cls, repo_dir=None, bare=None):
 		args = ['init']
 		if bare: args.append('--bare')
-		if dir: args.append(dir)
+		if repo_dir: args.append(repo_dir)
 
 		shell_cmd(GIT, args)
-		if dir is None:
+		if repo_dir is None:
 			return cls('.')
 		else:
-			return cls(dir)
+			return cls(repo_dir)
 
 	@classmethod
-	def clone(cls, url, dir=None, remote=None, rev=None, local_branch=None):
+	def clone(cls, url, repo_dir=None, remote=None, rev=None, local_branch=None):
 		if remote is None:
 			remote = 'origin'
 
@@ -82,20 +81,19 @@ class Repo(object):
 		method = 'manual'
 		if method == 'standard':
 			args = ['clone', url]
-			if dir:
-				args.append(dir)
+			if repo_dir:
+				args.append(repo_dir)
 		
 			shell_cmd(GIT, args)
-			return cls(dir)
+			return cls(repo_dir)
 		elif method == 'manual':
-			if dir:
-				if not os.path.exists(dir):
-					os.makedirs(dir)
+			if repo_dir:
+				if not os.path.exists(repo_dir):
+					os.makedirs(repo_dir)
 			else:
-				dir = os.getcwd()
+				repo_dir = os.getcwd()
 
-			shell_cmd(GIT, ['init'], cwd=dir)
-			repo = cls(dir)
+			repo = cls.init(repo_dir)
 			repo.remote_add(remote, url)
 			repo.fetch(remote)
 			#TODO: weirdness: Git can't actually tell what the HEAD of the remote is directly,
