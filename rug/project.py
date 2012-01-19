@@ -427,6 +427,8 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 		(remotes, repos, default) = manifest.read(self.manifest_filename, apply_default=False)
 
+		update_rug_branch = False
+
 		r = self.repos.get(path, None)
 		if r is None:
 			if name is None:
