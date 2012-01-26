@@ -11,7 +11,7 @@ class Repo(object):
 		mr = self.project.manifest_repo
 		delegated_methods = {
 			'valid_sha': mr.valid_sha,
-			'valid_ref': mr.valid_ref,
+			'valid_rev': mr.valid_rev,
 			'update_ref': mr.update_ref,
 			'head': mr.head,
 			'rev_parse': mr.rev_parse,

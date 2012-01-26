@@ -41,12 +41,56 @@ def shell_cmd(cmd, args, cwd=None, raise_errors=True, print_output=False):
 	else:
 		return (ret, out, err)
 
+class Rev(object):
+	def __init__(self, repo, name):
+		if not repo.valid_rev(name):
+			raise UnknownRevisionError('invalid rev %s' % name)
+
+		self.repo = repo
+		self.name = name
+
+	@classmethod
+	def cast(cls, repo, rev):
+		if isinstance(rev, cls):
+			return rev
+		else:
+			return cls(repo, rev)
+
+	@classmethod
+	def create(cls, repo, dst, src=None):
+		if src is None:
+			src = cls(repo, 'HEAD')
+
+		repo.branch_create(dst, src)
+
+		return cls(repo, dst)
+
+	def is_sha(self):
+		if '_is_sha' not in self.__dict__:
+			self._is_sha = self.repo.valid_sha(self.name)
+		return self._is_sha
+
+	def get_sha(self):
+		return self.repo.rev_parse(self.name)
+
+	def get_short_name(self):
+		if self.is_sha():
+			return self.name
+		else:
+			return self.repo.rev_parse(self.name, abbrev_ref=True)
+
+	def get_long_name(self):
+		if self.is_sha():
+			return self.get_sha()
+		else:
+			return self.repo.rev_parse(self.name, full_name=True)
+
 class Repo(object):
 	def __init__(self, repo_dir):
-		d = os.path.abspath(repo_dir)
-		if not self.valid_repo(d):
+		abs_dir = os.path.abspath(repo_dir)
+		if not self.valid_repo(abs_dir):
 			raise InvalidRepoError('not a valid git repository')
-		self.dir = d
+		self.dir = abs_dir
 		self.bare = (self.git_cmd(['config', 'core.bare']).lower() == 'true')
 		if self.bare:
 			self.git_dir = self.dir
@@ -103,25 +147,25 @@ class Repo(object):
 			#see guess_remote_host in git/remote.c
 			repo.remote_set_head(remote)
 
-			if rev and repo.valid_ref(rev):
+			if rev and repo.valid_sha(rev):
 				#rev is a Commit ID
 				repo.checkout(rev)
 			else:
 				if rev:
-					remote_branch = '%s/%s' % (remote, rev)
+					remote_branch = Rev(repo, '%s/%s' % (remote, rev))
 					if not local_branch:
 						local_branch = rev
 				else:
-					remote_branch = repo.symbolic_ref('refs/remotes/%s/HEAD' % remote)
+					remote_branch = Rev(repo, 'refs/remotes/%s/HEAD' % remote)
 					if not local_branch:
 						#remove refs/remotes/<origin>/ for the local version
-						local_branch = '/'.join(remote_branch.split('/')[3:])
+						local_branch = '/'.join(remote_branch.get_long_name().split('/')[3:])
 				#Strange things can happen here if local_branch is 'master', since git considers
 				#the repo to be on branch master, although it doesn't technically exist yet.
 				#'checkout -b' doesn't quite to know what to make of this situation, so we branch
 				#explicitly.  Also, checkout will try to merge local changes into the checkout
 				#(which will delete everything), so we force a clean checkout
-				repo.branch_create(local_branch, remote_branch)
+				local_branch = Rev.create(repo, local_branch, remote_branch)
 				repo.checkout(local_branch, force=True)
 
 			return repo
@@ -132,19 +176,8 @@ class Repo(object):
 		#else:
 		return shell_cmd(GIT, args, cwd = self.dir, raise_errors=raise_errors, print_output=print_output)
 
-	def head(self, full=False):
-		ref = open(os.path.join(self.git_dir, 'HEAD')).read()
-
-		if ref.startswith('ref: '):
-			ref = ref[5:-1]
-			if not full:
-				parts = ref.split('/')
-				if (len(parts) > 2) and (parts[0] == 'refs') and ((parts[1] == 'heads') or (parts[1] == 'tags')):
-					ref = '/'.join(parts[2:])
-		else:
-			ref = ref[:-1]
-
-		return ref
+	def head(self):
+		return Rev(self, 'HEAD')
 
 	def dirty(self, ignore_submodules=True):
 		args = ['diff', 'HEAD']
@@ -188,7 +221,7 @@ class Repo(object):
 		args = ['push']
 		if force: args.append('-f')
 		if remote: args.append(remote)
-		if branch: args.append(branch)
+		if branch: args.append(Rev.cast(self, branch).get_short_name())
 
 		self.git_cmd(args)
 
@@ -196,7 +229,7 @@ class Repo(object):
 		args = ['push', '-n']
 		if force: args.append('-f')
 		if remote: args.append(remote)
-		if branch: args.append(branch)
+		if branch: args.append(Rev.cast(self, branch).get_short_name())
 
 		(ret, out, err) = self.git_cmd(args, raise_errors=False)
 		return not ret
@@ -211,7 +244,7 @@ class Repo(object):
 
 	def ref_list(self):
 		args = ['show-ref']
-		return [r.split()[1][5:] for r in self.git_cmd(args).split('\n')]
+		return map(Rev, [r.split()[1][5:] for r in self.git_cmd(args).split('\n')])
 
 	def branch_create(self, dst, src=None, force=False):
 		args = ['branch']
@@ -219,7 +252,7 @@ class Repo(object):
 			args.append('-f')
 		args.append(dst)
 		if src:
-			args.append(src)
+			args.append(Rev.cast(self, src).get_short_name())
 
 		self.git_cmd(args)
 
@@ -229,12 +262,12 @@ class Repo(object):
 			args.append('-D')
 		else:
 			args.append('-d')
-		args.append(dst)
+		args.append(Rev.cast(self, dst).get_short_name())
 
 		self.git_cmd(args)
 
 	def checkout(self, branch, force=False):
-		args = ['checkout', branch]
+		args = ['checkout', Rev.cast(self, branch).get_short_name()]
 		if force:
 			args.append('-f')
 
@@ -255,10 +288,13 @@ class Repo(object):
 			else:
 				#TODO: error
 				pass
-		args.append(branch)
+		args.append(Rev.cast(self, branch).get_short_name())
 		self.git_cmd(args)
 
 	def update_ref(self, ref, newval):
+		#ref may not exist, so can't Rev.cast
+		if isinstance(ref, Rev):
+			ref = ref.get_long_name()
 		self.git_cmd(['update-ref', ref, newval])
 
 	#Branch combination operations
@@ -272,7 +308,7 @@ class Repo(object):
 		args = ['rebase']
 		if onto:
 			args.extend(['--onto', onto])
-		args.append(base)
+		args.append(Rev.cast(self, base).get_short_name())
 
 		return self.git_cmd(args, raise_errors=False, print_output=False)
 
@@ -290,37 +326,48 @@ class Repo(object):
 
 		return self.git_cmd(args, raise_errors=True, print_output=False)
 
-	def rev_parse(self, rev):
+	def rev_parse(self, rev, full_name=False, abbrev_ref=False):
+		args = ['rev-parse']
+		if full_name:
+			args.append('--symbolic-full-name')
+		if abbrev_ref:
+			args.append('--abbrev-ref')
+		args.append(rev)
+
 		try:
-			return self.git_cmd(['rev-parse', rev])
+			return self.git_cmd(args)
 		except GitError as e:
 			if e.args[0].find('unknown revision') > -1:
 				raise UnknownRevisionError('Unknown revision %s' % rev)
 			else:
 				raise e
 
-	def valid_ref(self, ref, include_sha=True):
+	def valid_rev(self, rev, include_sha=True):
 		if include_sha:
 			try:
-				self.rev_parse(ref)
-				return True
+				self.rev_parse(rev)
 			except UnknownRevisionError:
 				return False
-		else:
-			#TODO: got to be a better way
-			#there is: use show to show the ref, parse the first word of the response
-			#(should be 'commit').  If !include_sha, verify !self.valid_sha(ref)
-			refs = self.ref_list()
-			return (ref in refs) or (('heads/' + ref) in refs) or \
-				(('tags/' + ref) in refs) or (('remotes/' + ref) in refs)
 
-	def valid_sha(self, ref):
-		#TODO: got to be a better way
-		#There is: check .git/objects/xx/xxxxxx..., verify that it's a 'commit' with show
-		return (not self.valid_ref(ref, False)) and self.valid_ref(ref, True)
+			return True
+		else:
+			if self.valid_sha(rev):
+				return False
+			else:
+				return self.valid_rev(rev, include_sha=True)
+
+	def valid_sha(self, rev):
+		#Note: this will fail for revs that are prefixes of their own SHAs
+		#However, if you name your branches that way, you deserve what you get
+		try:
+			rp = self.rev_parse(rev)
+		except UnknownRevisionError:
+			return False
+
+		return rp[:len(rev)] == rev
 
 	def merge_base(self, rev1, rev2):
-		return self.git_cmd(['merge-base', rev1, rev2])
+		return self.git_cmd(['merge-base', Rev.cast(self, rev1).get_short_name(), Rev.cast(self, rev2).get_short_name()])
 
 	def symbolic_ref(self, ref):
 		return self.git_cmd(['symbolic-ref', ref])
@@ -328,5 +375,7 @@ class Repo(object):
 	def can_fastforward(self, merge_head, orig_head = 'HEAD'):
 		return self.rev_parse(orig_head) == self.merge_base(orig_head, merge_head)
 
-	def is_descendant(self, commit):
-		return self.rev_parse(commit) in self.git_cmd(['rev-list', 'HEAD']).split()
+	def is_descendant(self, ancestor, branch=None):
+		if branch is None:
+			branch = 'HEAD'
+		return Rev.cast(self, ancestor).get_sha() in self.git_cmd(['rev-list', Rev.cast(self, branch).get_short_name()]).split()

@@ -6,11 +6,11 @@ from project import Project, RugError
 def init(optdict={}, project_dir=None):
 	return Project.init(project_dir, optdict.has_key('-b'))
 
-def clone(optdict={}, url=None, project_dir=None, revset=None):
+def clone(optdict={}, url=None, project_dir=None, remote=None, revset=None):
 	if not url:
 		raise RugError('url must be specified')
 
-	return Project.clone(url, project_dir, revset, optdict.has_key('-b'))
+	return Project.clone(url=url, project_dir=project_dir, remote=remote, revset=revset, bare=optdict.has_key('-b'))
 
 def checkout(proj, optdict={}, rev=None):
 	return proj.checkout(rev)

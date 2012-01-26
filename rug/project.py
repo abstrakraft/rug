@@ -18,6 +18,22 @@ RUG_DIR = '.rug'
 RUG_SHA_RIDER = 'rug/sha_rider'
 RUG_DEFAULT_DEFAULT = {'revision': 'master', 'vcs': 'git'}
 
+class Revset(git.Rev):
+	def __init__(self, project, name):
+		super(Revset, self).__init__(project.manifest_repo, name)
+
+	@classmethod
+	def create(cls, repo, dst, src=None):
+		return super(Revset, cls).create(repo.manifest_repo, dst, src)
+
+	@classmethod
+	def cast(cls, project, revset):
+		#TODO: the cast superclass calls are fragile - rework
+		if isinstance(revset, git.Rev):
+			return cls(project, revset.name)
+		else:
+			return super(Revset, cls).cast(project, revset)
+
 class Project(object):
 	vcs_class = {}
 
@@ -147,7 +163,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 		#checkout revset
 		p = cls(project_dir)
-		output.append(p.checkout())
+		output.append(p.checkout(revset))
 
 		return '\n'.join(output)
 
@@ -168,7 +184,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		return git.Repo.valid_repo(manifest_dir) \
 			and os.path.exists(os.path.join(manifest_dir, 'manifest.xml'))
 
-	def get_branches(self, r):
+	def get_branch_names(self, r):
 		revision = r.get('revision', 'HEAD')
 		repo = r['repo']
 		if revision == 'HEAD':
@@ -185,8 +201,8 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		else:
 			ret['live_porcelain'] = revision
 			ret['live_plumbing'] = 'refs/heads/%s' % revision
-			ret['rug'] = 'refs/rug/heads/%s/%s/%s' % (self.revset(), r['remote'], revision)
-			ret['bookmark'] = 'refs/rug/bookmarks/%s/%s/%s' % (self.revset(), r['remote'], revision)
+			ret['rug'] = 'refs/rug/heads/%s/%s/%s' % (self.revset().get_short_name(), r['remote'], revision)
+			ret['bookmark'] = 'refs/rug/bookmarks/%s/%s/%s' % (self.revset().get_short_name(), r['remote'], revision)
 			ret['bookmark_index'] = 'refs/rug/bookmark_index'
 			ret['remote'] = '%s/%s' % (r['remote'], revision)
 
@@ -205,13 +221,13 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		return self.manifest_repo.remote_set_head(remote)
 
 	def revset(self):
-		'return the name of the current revset'
-		return self.manifest_repo.head()
+		'return the current revset'
+		return Revset.cast(self, self.manifest_repo.head())
 
 	def revset_list(self):
 		'return the list of available revsets'
 		#TODO: refs or branches?
-		return '\n'.join(self.manifest_repo.ref_list())
+		return '\n'.join(map(lambda rs: rs.get_short_name(), map(Revset, self.manifest_repo.ref_list())))
 
 	def revset_create(self, dst, src=None):
 		'create a new revset'
@@ -269,6 +285,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		#Checkout manifest manifest
 		if revset is None:
 			revset = self.revset()
+		revset = Revset.cast(self, revset)
 		#Always throw away local rug changes - uncommitted changes to the manifest.xml file are lost
 		self.manifest_repo.checkout(revset, force=True)
 
@@ -299,20 +316,20 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 					#seen this remote before
 					repo.fetch(r['remote'])
 
-					branches = self.get_branches(r)
+					branches = self.get_branch_names(r)
 
 					#create rug and bookmark branches if they don't exist
 					#branches are fully qualified ('refs/...') branch names, so use update_ref
 					#instead of create_branch
 					for b in ['rug', 'bookmark']:
-						if not repo.valid_ref(branches[b]):
+						if not repo.valid_rev(branches[b]):
 							repo.update_ref(branches[b], branches['remote'])
 
 					#create and checkout the live branch
 					repo.update_ref(branches['live_plumbing'], branches['rug'])
 					repo.checkout(branches['live_porcelain'])
 
-		return 'revset %s checked out' % revset
+		return 'revset %s checked out' % revset.get_short_name()
 
 	def create_repo(self, r, sub_repos):
 		if self.bare:
@@ -326,7 +343,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		for sr in sub_repos:
 			repo.add_ignore(os.path.relpath(sr, r['path']))
 		r['repo'] = repo
-		branches = self.get_branches(r)
+		branches = self.get_branch_names(r)
 		for b in ['live_plumbing', 'rug', 'bookmark']:
 			repo.update_ref(branches[b], branches['remote'])
 
@@ -375,11 +392,11 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		for r in repos:
 			repo = r['repo']
 			if repo:
-				branches = self.get_branches(r)
+				branches = self.get_branch_names(r)
 				#We don't touch the bookmark branch here - we refer to bookmark index branch if it exists,
 				#or bookmark branch if not, and update the bookmark index branch if necessary.  Commit updates
 				#bookmark branch and removes bookmark index
-				if repo.valid_ref(branches['bookmark_index']):
+				if repo.valid_rev(branches['bookmark_index']):
 					current_bookmark = branches['bookmark_index']
 				else:
 					current_bookmark = branches['bookmark']
@@ -454,11 +471,12 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 				if repo is None:
 					raise RugError('unrecognized repo %s' % path)
 			else:
-				if rev is None:
-					repo = vcs_class[vcs](abs_path)
+				repo = vcs_class[vcs](abs_path)
 
 			if rev is None:
-				rev = repo.head()
+				rev = repo.head().get_short_name()
+			elif isinstance(rev, git.Rev):
+				rev = rev.get_short_name()
 
 			repos[path] = {'name': name, 'path': path}
 			if rev != default.get('revision'):
@@ -484,7 +502,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 				if r['revision'] == head:
 					raise RugError('no change to repo %s' % path)
 			else:
-				branches = self.get_branches(r)
+				branches = self.get_branch_names(r)
 				if repo.rev_parse(branches['rug']) == repo.rev_parse(head):
 					raise RugError('no change to repo %s' % path)
 
@@ -499,7 +517,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 			self.load_repos([path])
 			r = self.repos[path]
 			repo = r['repo']
-			branches = self.get_branches(r)
+			branches = self.get_branch_names(r)
 			repo.update_ref(branches['rug'], rev)
 
 		return "%s added to manifest" % path
@@ -520,10 +538,10 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 			self.load_repos()
 			for r in self.repos.values():
 				repo = r['repo']
-				branches = self.get_branches(r)
+				branches = self.get_branch_names(r)
 				repo.update_ref(branches['rug'], branches['live_plumbing'])
 
-				if repo.valid_ref(branches['bookmark_index'], include_sha=False):
+				if repo.valid_rev(branches['bookmark_index'], include_sha=False):
 					repo.update_ref(branches['bookmark'], branches['bookmark_index'])
 					repo.branch_delete(branches['bookmark_index'])
 
@@ -571,14 +589,14 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		#Verify that we can push to manifest repo
 		#TODO: We don't always need to push manifest repo
 		manifest_revision = self.manifest_repo.head()
-		if self.manifest_repo.valid_sha(manifest_revision):
-			manifest_refspec = '%s:refs/%s' % (manifest_revision, RUG_SHA_RIDER)
+		if manifest_revision.is_sha():
+			manifest_refspec = '%s:refs/%s' % (manifest_revision.get_short_name(), RUG_SHA_RIDER)
 			manifest_force = True
 		else:
 			manifest_refspec = manifest_revision
 			manifest_force = False
 		if not self.manifest_repo.test_push(remote, manifest_refspec, force=manifest_force):
-			error.append('manifest branch %s cannot be pushed to %s' % (manifest_revision, r['remote']))
+			error.append('manifest branch %s cannot be pushed to %s' % (manifest_revision.get_short_name(), r['remote']))
 			ready = False
 
 		if test:
@@ -592,7 +610,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		for (r, refspec, force) in unpub_repos:
 			repo = r['repo']
 			repo.push(r['remote'], refspec, force)
-			branches = self.get_branches(r)
+			branches = self.get_branch_names(r)
 			repo.update_ref(branches['bookmark'], refspec)
 			output.append('%s: pushed %s to %s' % (r['name'], r['revision'], r['remote']))
 
@@ -617,14 +635,14 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		if self.manifest_repo.dirty():
 			self.commit(message="Rug publish commit")
 			manifest_revision = self.manifest_repo.head()
-			if self.manifest_repo.valid_sha(manifest_revision):
-				manifest_refspec = '%s:refs/%s' % (manifest_revision, RUG_SHA_RIDER)
+			if manifest_revision.is_sha():
+				manifest_refspec = '%s:refs/%s' % (manifest_revision.get_short_name(), RUG_SHA_RIDER)
 				manifest_force = True
 			else:
 				manifest_refspec = manifest_revision
 				manifest_force = False
 		self.manifest_repo.push(remote, manifest_refspec, force=manifest_force)
-		output.append('manifest branch %s pushed to %s' % (manifest_revision, remote))
+		output.append('manifest branch %s pushed to %s' % (manifest_revision.get_short_name(), remote))
 
 		self.read_manifest()
 
