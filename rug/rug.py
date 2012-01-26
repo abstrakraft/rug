@@ -2,24 +2,25 @@ import sys
 import getopt
 import os.path
 from project import Project, RugError
+import buffer
 
-def init(optdict={}, project_dir=None):
-	return Project.init(project_dir, optdict.has_key('-b'))
+def init(output, optdict={}, project_dir=None):
+	Project.init(project_dir, optdict.has_key('-b'), output=output)
 
-def clone(optdict={}, url=None, project_dir=None, remote=None, revset=None):
+def clone(output, optdict={}, url=None, project_dir=None, remote=None, revset=None):
 	if not url:
 		raise RugError('url must be specified')
 
-	return Project.clone(url=url, project_dir=project_dir, remote=remote, revset=revset, bare=optdict.has_key('-b'))
+	Project.clone(url=url, project_dir=project_dir, remote=remote, revset=revset, bare=optdict.has_key('-b'), output=output)
 
 def checkout(proj, optdict={}, rev=None):
-	return proj.checkout(rev)
+	proj.checkout(rev)
 
 def fetch(proj, optdict={}, repos=None):
-	return proj.fetch(repos)
+	proj.fetch(repos)
 
 def update(proj, optdict={}, repos=None):
-	return proj.update(repos)
+	proj.update(repos)
 
 def status(proj, optdict={}):
 	return proj.status()
@@ -28,10 +29,7 @@ def revset(proj, optdict={}, dst=None, src=None):
 	if dst is None:
 		return proj.revset()
 	else:
-		if src is None:
-			return proj.revset_create(dst)
-		else:
-			return proj.revset_create(dst, src)
+		proj.revset_create(dst, src)
 
 def add(proj, optdict={}, project_dir=None, name=None, remote=None, rev=None, vcs=None):
 	if not project_dir:
@@ -41,22 +39,22 @@ def add(proj, optdict={}, project_dir=None, name=None, remote=None, rev=None, vc
 	#but python interface is relative to project root
 	abs_path = os.path.abspath(project_dir)
 	path = os.path.relpath(abs_path, proj.dir)
-	return proj.add(path, name, remote, rev, vcs)
+	proj.add(path, name, remote, rev, vcs)
 
 def commit(proj, optdict={}, message=None):
 	if not message:
 		raise NotImplementedError('commit message editor not yet implemented') #TODO
 
-	return proj.commit(message)
+	proj.commit(message)
 
 def publish(proj, optdict={}, remote=None):
-	return proj.publish(remote)
+	proj.publish(remote)
 
 def remote_list(proj, optdict={}):
 	return proj.remote_list()
 
 def remote_add(proj, optdict={}, remote=None, fetch=None):
-	return proj.remote_add(remote, fetch)
+	proj.remote_add(remote, fetch)
 
 #(function, pass project flag, options)
 rug_commands = {
@@ -80,16 +78,25 @@ def main():
 		#TODO: write usage
 		print 'rug usage'
 	else:
-		cmd = rug_commands[sys.argv[1]]
-		[optlist, args] = getopt.gnu_getopt(sys.argv[2:], cmd[2])
+		(func, pass_project, optspec) = rug_commands[sys.argv[1]]
+		[optlist, args] = getopt.gnu_getopt(sys.argv[2:], optspec)
 		optdict = dict(optlist)
-		if cmd[1]:
-			ret = cmd[0](Project.find_project(), optdict, *args)
+		output = buffer.Buffer()
+		if pass_project:
+			ret = func(Project.find_project(output=output), optdict, *args)
 		else:
-			ret = cmd[0](optdict, *args)
+			ret = func(output, optdict, *args)
 
-		if ret:
+		out = output.get_buffer()
+		if ret is not None:
+			#if the function returned anything (even ""), that's the stdout, and anything in the
+			#output buffer is stderr
+			if out:
+				sys.stderr.write(out)
 			print ret
+		elif out:
+			#if the function doesn't return anything, output buffer is stdout, unless empty
+			print out
 
 if __name__ == '__main__':
 	main()

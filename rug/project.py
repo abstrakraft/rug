@@ -6,6 +6,7 @@ import xml.dom.minidom
 import manifest
 import git
 import hierarchy
+import buffer
 
 class RugError(StandardError):
 	pass
@@ -37,7 +38,11 @@ class Revset(git.Rev):
 class Project(object):
 	vcs_class = {}
 
-	def __init__(self, project_dir):
+	def __init__(self, project_dir, output=None):
+		if output is None:
+			output = buffer.NullBuffer()
+		self.output = output
+
 		self.dir = os.path.abspath(project_dir)
 		#Verify validity
 		if not self.valid_project(self.dir):
@@ -85,7 +90,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		cls.vcs_class[vcs] = vcs_class
 
 	@classmethod
-	def find_project(cls, project_dir = None):
+	def find_project(cls, project_dir=None, output=None):
 		'Project.find_project(project_dir=pwd) -> project -- climb up the directory tree looking for a valid rug project'
 
 		if project_dir == None:
@@ -94,7 +99,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		head = project_dir
 		while head:
 			try:
-				return cls(head)
+				return cls(head, output=output)
 			except InvalidProjectError:
 				if head == os.path.sep:
 					head = None
@@ -104,8 +109,11 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		raise InvalidProjectError('not a valid rug project')
 
 	@classmethod
-	def init(cls, project_dir, bare=False):
+	def init(cls, project_dir, bare=False, output=None):
 		'Project.init -- initialize a new rug repository'
+
+		if output is None:
+			output = buffer.NullBuffer()
 
 		if project_dir == None:
 			project_dir = '.'
@@ -125,12 +133,14 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		mr.add(os.path.basename(manifest_filename))
 		mr.commit('Initial commit')
 
-		return ''
+		return cls(project_dir, output=output)
 
 	@classmethod
-	def clone(cls, url, project_dir=None, remote=None, revset=None, bare=False):
+	def clone(cls, url, project_dir=None, remote=None, revset=None, bare=False, output=None):
 		'Project.clone -- clone an existing rug repository'
 
+		if output is None:
+			output = buffer.NullBuffer()
 		#TODO: more output
 
 		#calculate directory
@@ -159,13 +169,13 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		if not os.path.exists(manifest_filename):
 			raise RugError('invalid manifest repo: no manifest.xml')
 
-		output = ['%s cloned into %s' % (url, project_dir)]
+		output.append('%s cloned into %s' % (url, project_dir))
 
 		#checkout revset
-		p = cls(project_dir)
+		p = cls(project_dir, output=output)
 		output.append(p.checkout(revset))
 
-		return '\n'.join(output)
+		return p
 
 	@classmethod
 	def valid_project(cls, project_dir, include_bare=True):
@@ -227,7 +237,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 	def revset_list(self):
 		'return the list of available revsets'
 		#TODO: refs or branches?
-		return '\n'.join(map(lambda rs: rs.get_short_name(), map(Revset, self.manifest_repo.ref_list())))
+		return map(Revset, self.manifest_repo.ref_list())
 
 	def revset_create(self, dst, src=None):
 		'create a new revset'
@@ -238,6 +248,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		self.manifest_repo.branch_delete(dst, force)
 
 	def status(self, porcelain=True):
+		#TODO: return objects or text?
 		#TODO: could add manifest status
 		if self.bare:
 			raise NotImplementedError('status not implemented for bare projects')
@@ -267,7 +278,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 	def remote_list(self):
 		#self.read_manifest()
 
-		return '\n'.join(self.remotes.keys())
+		return self.remotes.keys()
 
 	def remote_add(self, remote, fetch):
 		(remotes, repos, default) = manifest.read(self.manifest_filename, apply_default=False)
@@ -277,7 +288,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		manifest.write(self.manifest_filename, remotes, repos, default)
 		self.read_manifest()
 
-		return 'remote %s added' % remote
+		self.output.append('remote %s added' % remote)
 
 	def checkout(self, revset=None):
 		'check out a revset'
@@ -329,7 +340,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 					repo.update_ref(branches['live_plumbing'], branches['rug'])
 					repo.checkout(branches['live_porcelain'])
 
-		return 'revset %s checked out' % revset.get_short_name()
+		self.output.append('revset %s checked out' % revset.get_short_name())
 
 	def create_repo(self, r, sub_repos):
 		if self.bare:
@@ -520,7 +531,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 			branches = self.get_branch_names(r)
 			repo.update_ref(branches['rug'], rev)
 
-		return "%s added to manifest" % path
+		self.output.append("%s added to manifest" % path)
 
 	def commit(self, message):
 		#self.read_manifest()
@@ -559,7 +570,6 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		#self.read_manifest()
 
 		error = []
-		output = []
 
 		#Verify that we can push to all unpublished remotes
 		ready = True
@@ -612,7 +622,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 			repo.push(r['remote'], refspec, force)
 			branches = self.get_branch_names(r)
 			repo.update_ref(branches['bookmark'], refspec)
-			output.append('%s: pushed %s to %s' % (r['name'], r['revision'], r['remote']))
+			self.output.append('%s: pushed %s to %s' % (r['name'], r['revision'], r['remote']))
 
 		#Rewrite manifest
 		#TODO: rewrite using manifest.read/write
@@ -642,11 +652,9 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 				manifest_refspec = manifest_revision
 				manifest_force = False
 		self.manifest_repo.push(remote, manifest_refspec, force=manifest_force)
-		output.append('manifest branch %s pushed to %s' % (manifest_revision.get_short_name(), remote))
+		self.output.append('manifest branch %s pushed to %s' % (manifest_revision.get_short_name(), remote))
 
 		self.read_manifest()
-
-		return '\n'.join(output)
 
 	#TODO: define precisely what this should do
 	#def reset(self, optlist=[], repos=None):

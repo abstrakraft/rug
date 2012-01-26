@@ -235,12 +235,12 @@ class Repo(object):
 		return not ret
 
 	#TODO: doesn't work
-	def branch_list(self, all=False):
-		args = ['branch']
-		if all:
-			args.append('-a')
+	#def branch_list(self, all=False):
+	#	args = ['branch']
+	#	if all:
+	#		args.append('-a')
 
-		return self.git_cmd(args).split()
+	#	return self.git_cmd(args).split()
 
 	def ref_list(self):
 		args = ['show-ref']
@@ -367,12 +367,14 @@ class Repo(object):
 		return rp[:len(rev)] == rev
 
 	def merge_base(self, rev1, rev2):
-		return self.git_cmd(['merge-base', Rev.cast(self, rev1).get_short_name(), Rev.cast(self, rev2).get_short_name()])
+		#TODO: return Rev
+		return self, self.git_cmd(['merge-base', Rev.cast(self, rev1).get_short_name(), Rev.cast(self, rev2).get_short_name()])
 
 	def symbolic_ref(self, ref):
 		return self.git_cmd(['symbolic-ref', ref])
 
 	def can_fastforward(self, merge_head, orig_head = 'HEAD'):
+		#TODO: handle Rev from merge_base
 		return self.rev_parse(orig_head) == self.merge_base(orig_head, merge_head)
 
 	def is_descendant(self, ancestor, branch=None):
