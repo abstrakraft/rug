@@ -5,19 +5,21 @@ from project import Project, RugError
 import buffer
 
 def init(output, optdict={}, project_dir=None):
-	Project.init(project_dir, optdict.has_key('-b'), output=output)
+	Project.init(project_dir, optdict.has_key('--bare'), output=output)
 
-def clone(output, optdict={}, url=None, project_dir=None, remote=None, revset=None):
+def clone(output, optdict={}, url=None, project_dir=None):
 	if not url:
 		raise RugError('url must be specified')
 
-	Project.clone(url=url, project_dir=project_dir, remote=remote, revset=revset, bare=optdict.has_key('-b'), output=output)
+	Project.clone(url=url, project_dir=project_dir, source=optdict.get('-o'), revset=optdict.get('-b'), bare=optdict.has_key('--bare'), output=output)
 
-def checkout(proj, optdict={}, rev=None):
+def checkout(proj, optdict={}, rev=None, src=None):
+	if '-b' in optdict:
+		proj.revset_create(rev, src)
 	proj.checkout(rev)
 
 def fetch(proj, optdict={}, repos=None):
-	proj.fetch(repos)
+	proj.fetch(repos=repos)
 
 def update(proj, optdict={}, repos=None):
 	proj.update(repos)
@@ -27,7 +29,7 @@ def status(proj, optdict={}):
 
 def revset(proj, optdict={}, dst=None, src=None):
 	if dst is None:
-		return proj.revset()
+		return proj.revset().get_short_name()
 	else:
 		proj.revset_create(dst, src)
 
@@ -47,29 +49,37 @@ def commit(proj, optdict={}, message=None):
 
 	proj.commit(message)
 
-def publish(proj, optdict={}, remote=None):
-	proj.publish(remote)
+def publish(proj, optdict={}, source=None):
+	proj.publish(source)
 
 def remote_list(proj, optdict={}):
-	return proj.remote_list()
+	return '\n'.join(proj.remote_list())
 
 def remote_add(proj, optdict={}, remote=None, fetch=None):
 	proj.remote_add(remote, fetch)
 
-#(function, pass project flag, options)
+def source_list(proj, optdict={}):
+	return '\n'.join(proj.source_list())
+
+def source_add(proj, optdict={}, source=None, url=None):
+	proj.source_add(source, url)
+
+#(function, pass project flag, options, long_options)
 rug_commands = {
-	'init': (init, False, 'b'),
-	'clone': (clone, False, 'b'),
-	'checkout': (checkout, True, ''),
-	'fetch': (fetch, True, ''),
-	'update': (update, True, ''),
-	'status': (status, True, ''),
-	'revset': (revset, True, ''),
-	'add': (add, True, ''),
-	'commit': (commit, True, ''),
-	'publish': (publish, True, ''),
-	'remote_list': (remote_list, True, ''),
-	'remote_add': (remote_add, True, ''),
+	'init': (init, False, '', ['--bare']),
+	'clone': (clone, False, 'b:o:', ['--bare']),
+	'checkout': (checkout, True, 'b', []),
+	'fetch': (fetch, True, '', []),
+	'update': (update, True, '', []),
+	'status': (status, True, '', []),
+	'revset': (revset, True, '', []),
+	'add': (add, True, '', []),
+	'commit': (commit, True, '', []),
+	'publish': (publish, True, '', []),
+	'remote_list': (remote_list, True, '', []),
+	'remote_add': (remote_add, True, '', []),
+	'source_list': (source_list, True, '', []),
+	'source_add': (source_add, True, '', []),
 	#'reset': (Project.reset, True, ['soft', 'mixed', 'hard']),
 	}
 
@@ -78,8 +88,8 @@ def main():
 		#TODO: write usage
 		print 'rug usage'
 	else:
-		(func, pass_project, optspec) = rug_commands[sys.argv[1]]
-		[optlist, args] = getopt.gnu_getopt(sys.argv[2:], optspec)
+		(func, pass_project, optspec, long_options) = rug_commands[sys.argv[1]]
+		[optlist, args] = getopt.gnu_getopt(sys.argv[2:], optspec, long_options)
 		optdict = dict(optlist)
 		output = buffer.Buffer()
 		if pass_project:

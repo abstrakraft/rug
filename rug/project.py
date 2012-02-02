@@ -136,7 +136,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		return cls(project_dir, output=output)
 
 	@classmethod
-	def clone(cls, url, project_dir=None, remote=None, revset=None, bare=False, output=None):
+	def clone(cls, url, project_dir=None, source=None, revset=None, bare=False, output=None):
 		'Project.clone -- clone an existing rug repository'
 
 		if output is None:
@@ -163,7 +163,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		manifest_filename = os.path.join(manifest_dir, 'manifest.xml')
 
 		#clone manifest repo into rug directory
-		git.Repo.clone(url, repo_dir=manifest_dir, remote=remote, rev=revset)
+		git.Repo.clone(url, repo_dir=manifest_dir, remote=source, rev=revset)
 
 		#verify valid manifest
 		if not os.path.exists(manifest_filename):
@@ -221,14 +221,14 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 	def source_list(self):
 		return self.manifest_repo.remote_list()
 
-	def source_add(self, remote, url):
-		return self.manifest_repo.remote_add(remote, url)
+	def source_add(self, source, url):
+		return self.manifest_repo.remote_add(source, url)
 
-	def source_set_url(self, remote, url):
-		return self.manifest_repo.remote_set_url(remote, url)
+	def source_set_url(self, source, url):
+		return self.manifest_repo.remote_set_url(source, url)
 
-	def source_set_head(self, remote):
-		return self.manifest_repo.remote_set_head(remote)
+	def source_set_head(self, source):
+		return self.manifest_repo.remote_set_head(source)
 
 	def revset(self):
 		'return the current revset'
@@ -276,8 +276,6 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		return '\n'.join(stat)
 
 	def remote_list(self):
-		#self.read_manifest()
-
 		return self.remotes.keys()
 
 	def remote_add(self, remote, fetch):
@@ -360,10 +358,8 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 		repo.checkout(branches['live_porcelain'])
 
-	def fetch(self, remote, repos=None):
-		#self.read_manifest()
-
-		self.manifest_repo.fetch(remote)
+	def fetch(self, source=None, repos=None):
+		self.manifest_repo.fetch(source)
 
 		if not self.bare:
 			if repos is None:
@@ -383,8 +379,6 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 
 	def update(self, repos=None):
 		raise NotImplementedError('Update not yet implemented')
-
-		#self.read_manifest()
 
 		if repos is None:
 			self.load_repos()
@@ -451,8 +445,6 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		#TODO:we only pay attention to name, remote, rev, and vcs args for new repos
 		#TODO:options and better logic to add shas vs branch names
 		#TODO:handle lists of dirs
-		#self.read_manifest()
-
 		(remotes, repos, default) = manifest.read(self.manifest_filename, apply_default=False)
 
 		update_rug_branch = False
@@ -534,8 +526,6 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		self.output.append("%s added to manifest" % path)
 
 	def commit(self, message):
-		#self.read_manifest()
-
 		#TODO: currently, if a branch is added, we commit the branch as it exists at commit time
 		#rather than add time.  Correct operation should be determined.
 
@@ -560,15 +550,13 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 	def test_publish(self, remote=None):
 		return self.publish(remote, test=True)
 
-	def publish(self, remote=None, test=False):
-		if remote is None:
-			remote = 'origin'
-		if not remote in self.manifest_repo.remote_list():
-			raise RugError('unrecognized remote %s' % remote)
+	def publish(self, source=None, test=False):
+		if source is None:
+			source = 'origin'
+		if not source in self.source_list():
+			raise RugError('unrecognized source %s' % source)
 
 		#TODO: use manifest.read with apply_default=False
-		#self.read_manifest()
-
 		error = []
 
 		#Verify that we can push to all unpublished remotes
@@ -605,7 +593,7 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		else:
 			manifest_refspec = manifest_revision
 			manifest_force = False
-		if not self.manifest_repo.test_push(remote, manifest_refspec, force=manifest_force):
+		if not self.manifest_repo.test_push(source, manifest_refspec, force=manifest_force):
 			error.append('manifest branch %s cannot be pushed to %s' % (manifest_revision.get_short_name(), r['remote']))
 			ready = False
 
@@ -651,8 +639,8 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 			else:
 				manifest_refspec = manifest_revision
 				manifest_force = False
-		self.manifest_repo.push(remote, manifest_refspec, force=manifest_force)
-		self.output.append('manifest branch %s pushed to %s' % (manifest_revision.get_short_name(), remote))
+		self.manifest_repo.push(source, manifest_refspec, force=manifest_force)
+		self.output.append('manifest branch %s pushed to %s' % (manifest_revision.get_short_name(), source))
 
 		self.read_manifest()
 

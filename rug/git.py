@@ -267,9 +267,10 @@ class Repo(object):
 		self.git_cmd(args)
 
 	def checkout(self, branch, force=False):
-		args = ['checkout', Rev.cast(self, branch).get_short_name()]
+		args = ['checkout']
 		if force:
 			args.append('-f')
+		args.append(Rev.cast(self, branch).get_short_name())
 
 		self.git_cmd(args)
 
