@@ -4,64 +4,64 @@ import os.path
 from project import Project, RugError
 import buffer
 
-def init(output, optdict={}, project_dir=None):
+def init(output, optdict, project_dir=None):
 	Project.init(project_dir, optdict.has_key('--bare'), output=output)
 
-def clone(output, optdict={}, url=None, project_dir=None):
+def clone(output, optdict, url=None, project_dir=None):
 	if not url:
 		raise RugError('url must be specified')
 
 	Project.clone(url=url, project_dir=project_dir, source=optdict.get('-o'), revset=optdict.get('-b'), bare=optdict.has_key('--bare'), output=output)
 
-def checkout(proj, optdict={}, rev=None, src=None):
+def checkout(proj, optdict, rev=None, src=None):
 	if '-b' in optdict:
 		proj.revset_create(rev, src)
 	proj.checkout(rev)
 
-def fetch(proj, optdict={}, repos=None):
+def fetch(proj, optdict, repos=None):
 	proj.fetch(repos=repos)
 
-def update(proj, optdict={}, repos=None):
+def update(proj, optdict, repos=None):
 	proj.update(repos)
 
-def status(proj, optdict={}):
-	return proj.status()
+def status(proj, optdict):
+	return proj.status(porcelain=optdict.has_key('-p'))
 
-def revset(proj, optdict={}, dst=None, src=None):
+def revset(proj, optdict, dst=None, src=None):
 	if dst is None:
 		return proj.revset().get_short_name()
 	else:
 		proj.revset_create(dst, src)
 
-def add(proj, optdict={}, project_dir=None, name=None, remote=None, rev=None, vcs=None):
+def add(proj, optdict, project_dir=None, name=None, remote=None, rev=None):
 	if not project_dir:
 		raise RugError('unspecified directory')
+
+	vcs = optdict.get('-v')
+	use_sha = optdict.has_key('-s')
 
 	#Command-line interprets relative to cwd,
 	#but python interface is relative to project root
 	abs_path = os.path.abspath(project_dir)
 	path = os.path.relpath(abs_path, proj.dir)
-	proj.add(path, name, remote, rev, vcs)
+	proj.add(path=path, name=name, remote=remote, rev=rev, vcs=vcs, use_sha=use_sha)
 
-def commit(proj, optdict={}, message=None):
-	if not message:
-		raise NotImplementedError('commit message editor not yet implemented') #TODO
+def commit(proj, optdict):
+	proj.commit(message=optdict.get('-m'), all=optdict.has_key('-a'))
 
-	proj.commit(message)
-
-def publish(proj, optdict={}, source=None):
+def publish(proj, optdict, source=None):
 	proj.publish(source)
 
-def remote_list(proj, optdict={}):
+def remote_list(proj, optdict):
 	return '\n'.join(proj.remote_list())
 
-def remote_add(proj, optdict={}, remote=None, fetch=None):
+def remote_add(proj, optdict, remote=None, fetch=None):
 	proj.remote_add(remote, fetch)
 
-def source_list(proj, optdict={}):
+def source_list(proj, optdict):
 	return '\n'.join(proj.source_list())
 
-def source_add(proj, optdict={}, source=None, url=None):
+def source_add(proj, optdict, source=None, url=None):
 	proj.source_add(source, url)
 
 #(function, pass project flag, options, long_options)
@@ -71,10 +71,10 @@ rug_commands = {
 	'checkout': (checkout, True, 'b', []),
 	'fetch': (fetch, True, '', []),
 	'update': (update, True, '', []),
-	'status': (status, True, '', []),
+	'status': (status, True, 'p', []),
 	'revset': (revset, True, '', []),
-	'add': (add, True, '', []),
-	'commit': (commit, True, '', []),
+	'add': (add, True, 'sv:', []),
+	'commit': (commit, True, 'm:a', []),
 	'publish': (publish, True, '', []),
 	'remote_list': (remote_list, True, '', []),
 	'remote_add': (remote_add, True, '', []),
