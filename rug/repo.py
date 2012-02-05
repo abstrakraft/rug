@@ -28,10 +28,10 @@ class Repo(object):
 			'checkout': p.checkout,
 			'commit': p.commit,
 			'fetch': p.fetch,
+			'dirty': p.dirty,
 			#'push': p.publish,
 			#'test_push': p.test_publish,
 			'merge': None, #TODO
-			'dirty': None, #TODO
 			'rebase': None, #TODO
 		}
 

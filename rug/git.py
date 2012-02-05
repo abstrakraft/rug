@@ -327,6 +327,9 @@ class Repo(object):
 
 		return self.git_cmd(args, raise_errors=True, print_output=False)
 
+	def diff(self):
+		return self.git_cmd(['diff'])
+
 	def rev_parse(self, rev, full_name=False, abbrev_ref=False):
 		args = ['rev-parse']
 		if full_name:

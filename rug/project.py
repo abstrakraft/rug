@@ -253,27 +253,50 @@ Loads all repos by default, or those repos specified in the repos argument, whic
 		if self.bare:
 			raise NotImplementedError('status not implemented for bare projects')
 
-		#TODO: this is file status - also need repo status
-		#self.read_manifest()
-		self.load_repos()
+		#TODO: think through this
 
-		stat = []
-		for r in self.repos.values():
-			repo = r['repo']
-			if repo:
-				r_stat = repo.status(porcelain=True)
-				if r_stat != '':
-					if r['path'] == '.':
-						prefix = ''
-					else:
-						prefix = r['path']
-						if prefix[-1] != os.path.sep:
-							prefix += os.path.sep
-					stat.extend(['%s\t%s\t%s' % (s[:2], prefix+s[3:], r['path']) for s in r_stat.split('\n')])
-			else:
-				stat.append(' D ' + r['path'])
+		if porcelain:
+			stat = []
+			for r in self.repos.values():
+				repo = r['repo']
+				if repo:
+					r_stat = repo.status(porcelain=True)
+					if r_stat != '':
+						if r['path'] == '.':
+							prefix = ''
+						else:
+							prefix = r['path']
+							if prefix[-1] != os.path.sep:
+								prefix += os.path.sep
+						stat.extend(['%s\t%s\t%s' % (s[:2], prefix+s[3:], r['path']) for s in r_stat.split('\n')])
+				else:
+					stat.append(' D ' + r['path'])
+		else:
+			stat = ['On revset %s:' % self.revset().get_short_name()]
+			stat.append('manifest diff:')
+			stat.extend(map(lambda line: '\t' + line, self.manifest_repo.diff().split('\n')))
+			for r in self.repos.values():
+				repo = r['repo']
+				if repo is None:
+					stat.append('repo %s missing' % r['path'])
+				else:
+					stat.append('repo %s:' % r['path'])
+					stat.extend(map(lambda line: '\t' + line, r['repo'].status(porcelain=False).split('\n')))
 
 		return '\n'.join(stat)
+
+	def dirty(self):
+		#TODO: currently, "dirty" is defined as "would commit -a do anything"
+		#this seems to work, but needs further consideration
+		dirty_repos = False
+		for r in self.repos.values():
+			branches = self.get_branch_names(r)
+			repo = r['repo']
+			if (repo is None) or repo.valid_rev(branches['rug_index']):
+				dirty_repos = True
+				break
+
+		return dirty_repos or self.manifest_repo.dirty()
 
 	def remote_list(self):
 		return self.remotes.keys()
