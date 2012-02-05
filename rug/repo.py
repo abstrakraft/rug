@@ -13,6 +13,7 @@ class Repo(object):
 			'valid_sha': mr.valid_sha,
 			'valid_rev': mr.valid_rev,
 			'update_ref': mr.update_ref,
+			'delete_ref': mr.delete_ref,
 			'head': mr.head,
 			'rev_parse': mr.rev_parse,
 			'symbolic_ref': mr.symbolic_ref,

@@ -85,7 +85,12 @@ class Rev(object):
 		else:
 			return self.repo.rev_parse(self.name, full_name=True)
 
+	def __cmp__(self, other):
+		return self.get_short_name() == self.get_short_name()
+
 class Repo(object):
+	rev_class = Rev
+
 	def __init__(self, repo_dir):
 		abs_dir = os.path.abspath(repo_dir)
 		if not self.valid_repo(abs_dir):
@@ -217,19 +222,29 @@ class Repo(object):
 
 		self.git_cmd(args)
 
-	def push(self, remote=None, branch=None, force=False):
+	def push(self, remote=None, refspec=None, force=False):
 		args = ['push']
 		if force: args.append('-f')
 		if remote: args.append(remote)
-		if branch: args.append(Rev.cast(self, branch).get_short_name())
+		if refspec:
+			#refspec may be %s:%s rather than just a branch name, so can't cast
+			if isinstance(refspec, Rev):
+				args.append(refspec.get_short_name())
+			else:
+				args.append(refspec)
 
 		self.git_cmd(args)
 
-	def test_push(self, remote=None, branch=None, force=False):
+	def test_push(self, remote=None, refspec=None, force=False):
 		args = ['push', '-n']
 		if force: args.append('-f')
 		if remote: args.append(remote)
-		if branch: args.append(Rev.cast(self, branch).get_short_name())
+		if refspec:
+			#refspec may be %s:%s rather than just a branch name, so can't cast
+			if isinstance(refspec, Rev):
+				args.append(refspec.get_short_name())
+			else:
+				args.append(refspec)
 
 		(ret, out, err) = self.git_cmd(args, raise_errors=False)
 		return not ret
@@ -292,11 +307,22 @@ class Repo(object):
 		args.append(Rev.cast(self, branch).get_short_name())
 		self.git_cmd(args)
 
+	def stash(self):
+		self.git_cmd(['stash'])
+
+	def stash_pop(self):
+		self.git_cmd(['stash', 'pop'])
+
 	def update_ref(self, ref, newval):
 		#ref may not exist, so can't Rev.cast
 		if isinstance(ref, Rev):
 			ref = ref.get_long_name()
+		if isinstance(newval, Rev):
+			newval = newval.get_long_name()
 		self.git_cmd(['update-ref', ref, newval])
+
+	def delete_ref(self, ref):
+		self.git_cmd(['update-ref', '-d', Rev.cast(self, ref).get_long_name()])
 
 	#Branch combination operations
 	#these commands do not currently raise errors
