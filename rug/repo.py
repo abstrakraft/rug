@@ -1,7 +1,24 @@
 import project
 
+class Repo_Rev(project.Revset):
+	def __init__(self, repo, name):
+		super(Repo_Rev, self).__init__(repo.project, name)
+
+	@classmethod
+	def create(cls, repo, dst, src=None):
+		return super(Repo_Rev, cls).create(repo.project, dst, src)
+
+	@classmethod
+	def cast(cls, repo, rev):
+		#TODO: the cast superclass calls are fragile - rework
+		if isinstance(rev, git.Rev):
+			return cls(repo, revset.name)
+		else:
+			return super(Repo_Rev, cls).cast(repo, rev)
+
 class Repo(object):
 	valid_repo = project.Project.valid_project
+	rev_class = Repo_Rev
 
 	def __init__(self, repo_dir):
 		from project import Project
@@ -17,8 +34,6 @@ class Repo(object):
 			'head': mr.head,
 			'rev_parse': mr.rev_parse,
 			'symbolic_ref': mr.symbolic_ref,
-			'is_descendant': mr.is_descendant,
-			'can_fastforward': mr.can_fastforward,
 			'remote_list': p.source_list,
 			'remote_add': p.source_add,
 			'remote_set_url': p.source_set_url,
@@ -62,5 +77,9 @@ class Repo(object):
 	def test_push(self, remote, branch, force):
 		#TODO: this is a hack to drop the branch and force args, because rug repos don't handle them. Fix
 		return self.project.test_publish(remote)
+
+	def update(self, recursive=False):
+		self.project.checkout()
+		self.project.update(recursive)
 
 project.Project.register_vcs('rug', Repo)

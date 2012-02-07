@@ -21,8 +21,8 @@ def checkout(proj, optdict, rev=None, src=None):
 def fetch(proj, optdict, repos=None):
 	proj.fetch(repos=repos)
 
-def update(proj, optdict, repos=None):
-	proj.update(repos)
+def update(proj, optdict):
+	proj.update(recursive=optdict.has_key('-r'))
 
 def status(proj, optdict):
 	return proj.status(porcelain=optdict.has_key('-p'))
@@ -47,7 +47,7 @@ def add(proj, optdict, project_dir=None, name=None, remote=None, rev=None):
 	proj.add(path=path, name=name, remote=remote, rev=rev, vcs=vcs, use_sha=use_sha)
 
 def commit(proj, optdict):
-	proj.commit(message=optdict.get('-m'), all=optdict.has_key('-a'))
+	proj.commit(message=optdict.get('-m'), all=optdict.has_key('-a'), recursive=optdict.has_key('-r'))
 
 def publish(proj, optdict, source=None):
 	proj.publish(source)
@@ -70,11 +70,11 @@ rug_commands = {
 	'clone': (clone, False, 'b:o:', ['--bare']),
 	'checkout': (checkout, True, 'b', []),
 	'fetch': (fetch, True, '', []),
-	'update': (update, True, '', []),
+	'update': (update, True, 'r', []),
 	'status': (status, True, 'p', []),
 	'revset': (revset, True, '', []),
 	'add': (add, True, 'sv:', []),
-	'commit': (commit, True, 'm:a', []),
+	'commit': (commit, True, 'm:ar', []),
 	'publish': (publish, True, '', []),
 	'remote_list': (remote_list, True, '', []),
 	'remote_add': (remote_add, True, '', []),

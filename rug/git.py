@@ -88,6 +88,18 @@ class Rev(object):
 	def __cmp__(self, other):
 		return self.get_short_name() == self.get_short_name()
 
+	def is_descendant(self, rev):
+		rev = self.cast(self.repo, rev)
+		return rev.get_sha() in self.repo.git_cmd(['rev-list', self.get_short_name()]).split()
+
+	def merge_base(self, rev):
+		cls = type(self)
+		return cls.cast(self.repo,
+			self.repo.git_cmd(['merge-base', self.get_short_name(), cls.cast(self.repo, rev).get_short_name()]))
+
+	def can_fastforward(self, rev):
+		return self.get_sha() == self.merge_base(rev).get_sha()
+
 class Repo(object):
 	rev_class = Rev
 
@@ -307,6 +319,10 @@ class Repo(object):
 		args.append(Rev.cast(self, branch).get_short_name())
 		self.git_cmd(args)
 
+	def update(self, recursive=False):
+		#Stub for recursive updates
+		pass
+
 	def stash(self):
 		self.git_cmd(['stash'])
 
@@ -329,7 +345,7 @@ class Repo(object):
 	#TODO:differentiate between errors and conflicts, act accordingly
 
 	def merge(self, merge_head):
-		return self.git_cmd(['merge', merge_head], raise_errors=False, print_output=False)
+		return self.git_cmd(['merge', Rev.cast(self, merge_head).get_short_name()], raise_errors=False, print_output=False)
 
 	def rebase(self, base, onto=None):
 		args = ['rebase']
@@ -396,18 +412,5 @@ class Repo(object):
 
 		return rp[:len(rev)] == rev
 
-	def merge_base(self, rev1, rev2):
-		#TODO: return Rev
-		return self, self.git_cmd(['merge-base', Rev.cast(self, rev1).get_short_name(), Rev.cast(self, rev2).get_short_name()])
-
 	def symbolic_ref(self, ref):
 		return self.git_cmd(['symbolic-ref', ref])
-
-	def can_fastforward(self, merge_head, orig_head = 'HEAD'):
-		#TODO: handle Rev from merge_base
-		return self.rev_parse(orig_head) == self.merge_base(orig_head, merge_head)
-
-	def is_descendant(self, ancestor, branch=None):
-		if branch is None:
-			branch = 'HEAD'
-		return Rev.cast(self, ancestor).get_sha() in self.git_cmd(['rev-list', Rev.cast(self, branch).get_short_name()]).split()

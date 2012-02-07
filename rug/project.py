@@ -24,12 +24,13 @@ class Revset(git.Rev):
 		super(Revset, self).__init__(project.manifest_repo, name)
 
 	@classmethod
-	def create(cls, repo, dst, src=None):
-		return super(Revset, cls).create(repo.manifest_repo, dst, src)
+	def create(cls, project, dst, src=None):
+		return super(Revset, cls).create(project.manifest_repo, dst, src)
 
 	@classmethod
 	def cast(cls, project, revset):
 		#TODO: the cast superclass calls are fragile - rework
+		#TODO: super doesn't seem to work in this line...why not?
 		if isinstance(revset, git.Rev):
 			return cls(project, revset.name)
 		else:
@@ -37,7 +38,6 @@ class Revset(git.Rev):
 
 class Project(object):
 	vcs_class = {}
-	rev_class = Revset
 
 	def __init__(self, project_dir, output=None):
 		if output is None:
@@ -266,14 +266,16 @@ Project methods should only call this function if necessary.'''
 					stat.append(' D ' + r['path'])
 		else:
 			stat = ['On revset %s:' % self.revset().get_short_name()]
-			stat.append('manifest diff:')
-			stat.extend(map(lambda line: '\t' + line, self.manifest_repo.diff().split('\n')))
+			diff = self.manifest_repo.diff()
+			if diff:
+				stat.append('manifest diff:')
+				stat.extend(map(lambda line: '\t' + line, self.manifest_repo.diff().split('\n')))
 			for r in self.repos.values():
 				repo = r['repo']
 				if repo is None:
 					stat.append('repo %s missing' % r['path'])
 				else:
-					stat.append('repo %s:' % r['path'])
+					stat.append('repo %s (%s):' % (r['path'], self.repo_status(r)))
 					stat.extend(map(lambda line: '\t' + line, r['repo'].status(porcelain=False).split('\n')))
 
 		return '\n'.join(stat)
@@ -281,15 +283,42 @@ Project methods should only call this function if necessary.'''
 	def dirty(self):
 		#TODO: currently, "dirty" is defined as "would commit -a do anything"
 		#this seems to work, but needs further consideration
-		dirty_repos = False
-		for r in self.repos.values():
-			branches = self.get_branch_names(r)
-			repo = r['repo']
-			if (repo is None) or repo.valid_rev(branches['rug_index']):
-				dirty_repos = True
-				break
+		if self.manifest_repo.dirty():
+			return True
+		else:
+			for r in self.repos.values():
+				if self.repo_status(r):
+					return True
 
-		return dirty_repos or self.manifest_repo.dirty()
+	def repo_status(self, r):
+		branches = self.get_branch_names(r)
+		repo = r['repo']
+		status = ''
+		if repo is None:
+			# deleted repo - Deleted
+			status += 'D'
+		else:
+			if repo.valid_rev(branches['rug_index']):
+				# added to index - Staged
+				status += 'S'
+			if repo.dirty():
+				# repo is dirty - Modified
+				status += 'M'
+			head = repo.head()
+			if repo.valid_sha(r['revision']):
+				#TODO: properly compare partial shas
+				if head.get_sha() != r['revision']:
+					#Revision changed names: Revision
+					status += 'R'
+			else:
+				if (head.get_short_name() != r['revision']):
+					#Revision changed names: Revision
+					status += 'R'
+				elif (head.get_sha() != repo.rev_class(repo, branches['rug']).get_sha()):
+					#Branch definition changed: Branch
+					status += 'B'
+
+		return status
 
 	def remote_list(self):
 		return self.remotes.keys()
@@ -394,68 +423,82 @@ Project methods should only call this function if necessary.'''
 
 		#TODO:output
 
-	def update(self, repos=None):
-		raise NotImplementedError('Update not yet implemented')
+	def update(self, recursive=False):
+		#TODO: implement per repo update
+		repos = self.repos.values()
+		#if repos is None:
+		#	repos = self.repos.values()
+		#else:
+		#	#TODO: turn list of strings into repos
+		#	pass
 
-		if repos is None:
-			repos = self.repos.values()
-		else:
-			#TODO: turn list of strings into repos
-			pass
+		if self.dirty():
+			raise RugError('Project has uncommitted changes - commit before updating')
 
-		#TODO:fetch? current thinking is no: update and fetch are separate operations
-
-		#TODO:update manifest
-
-		output = []
+		#TODO:update manifest?
 
 		sub_repos = hierarchy.hierarchy(self.repos.keys())
 		for r in repos:
 			repo = r['repo']
 			if repo:
+				#Get Branch names, revs, etc.
 				branches = self.get_branch_names(r)
-				#We don't touch the bookmark branch here - we refer to bookmark index branch if it exists,
-				#or bookmark branch if not, and update the bookmark index branch if necessary.  Commit updates
-				#bookmark branch and removes bookmark index
-				if repo.valid_rev(branches['bookmark_index']):
-					current_bookmark = branches['bookmark_index']
+				head_rev = repo.head()
+				if not repo.valid_rev(branches['remote']):
+					self.output.append('remote branch does not exist in %s: no update' % r['path'])
 				else:
-					current_bookmark = branches['bookmark']
-				#Check if there are no changes
-				if repo.rev_parse(repo.head()) == repo.rev_parse(branches['remote']):
-					output.append('%s is up to date with upstream repo: no change' % r['name'])
-				elif repo.is_descendant(branches['remote']):
-					output.append('%s is ahead of upstream repo: no change' % r['name'])
-				#Fast-Forward if we can
-				elif repo.can_fastforward(branches['remote']):
-					output.append('%s is being fast-forward to upstream repo' % r['name'])
-					repo.merge(branches['remote'])
-					repo.update_ref(branches['bookmark_index'], branches['remote'])
-				#otherwise rebase/merge local work
-				elif repo.is_descendant(bookmark_branch):
-					if repo.dirty():
-						#TODO: option to stash, rebase, then reapply?
-						output.append('%s has local uncommitted changes and cannot be rebased. Skipping this repo.' % r['name'])
+					remote_rev = repo.rev_class(repo, branches['remote'])
+					#We don't touch the bookmark branch here - we refer to bookmark index branch if it exists,
+					#or bookmark branch if not, and update the bookmark index branch if necessary.  Commit updates
+					#bookmark branch and removes bookmark index
+					if repo.valid_rev(branches['bookmark_index']):
+						bookmark_rev = repo.rev_class(repo, branches['bookmark_index'])
+					elif repo.valid_rev(branches['bookmark']):
+						bookmark_rev = repo.rev_class(repo, branches['bookmark'])
 					else:
-						#TODO: option to merge instead of rebase
-						#TODO: handle merge/rebase conflicts
-						#TODO: remember if we're in a conflict state
-						output.append('%s is being rebased onto upstream repo' % r['name'])
-						[ret,out,err] = repo.rebase(bookmark_branch, onto=branches['remote'])
-						if ret:
-							output.append(out)
-						else:
-							repo.update_ref(branches['bookmark_index'], branches['remote'])
-				#Fail
-				elif repo.head() != branches['rug']:
-					output.append('%s has changed branches and cannot be safely updated. Skipping this repo.' % r['name'])
-				else:
-					#Weird stuff has happened - right branch, wrong relationship to bookmark
-					output.append('The current branch in %s has been in altered in an unusal way and must be manually updated.' % r['name'])
-			else:
-				self.create_repo(r, sub_repos[r['path']])
+						bookmark_rev = None
 
-		return '\n'.join(output)
+					#Check if there are no changes
+					if head_rev.get_sha() == remote_rev.get_sha():
+						self.output.append('%s is up to date with upstream repo: no update' % r['path'])
+					elif head_rev.is_descendant(remote_rev):
+						self.output.append('%s is ahead of upstream repo: no update' % r['path'])
+					#Fast-Forward if we can
+					elif head_rev.can_fastforward(remote_rev):
+						self.output.append('%s is being fast-forward to upstream repo' % r['path'])
+						repo.merge(remote_rev)
+						repo.update_ref(branches['bookmark_index'], remote_rev)
+					#otherwise rebase/merge local work
+					elif bookmark_branch and head_rev.is_descendant(bookmark_branch):
+						#TODO: currently dead code - we check for dirtyness at the top of the function
+						if repo.dirty():
+							#TODO: option to stash, rebase, then reapply?
+							self.output.append('%s has local uncommitted changes and cannot be rebased. Skipping this repo.' % r['path'])
+						else:
+							#TODO: option to merge instead of rebase
+							#TODO: handle merge/rebase conflicts
+							#TODO: remember if we're in a conflict state
+							self.output.append('%s is being rebased onto upstream repo' % r['name'])
+							[ret,out,err] = repo.rebase(bookmark_branch, onto=branches['remote'])
+							if ret:
+								self.output.append(out)
+							else:
+								repo.update_ref(branches['bookmark_index'], branches['remote'])
+					elif not bookmark_branch:
+						self.output.append('%s has an unusual relationship with the remote branch, and no bookmark. Skipping this repo.' % r['path'])
+					#Fail
+					#TODO: currently dead code - we check for dirtyness at the top of the function
+					elif head_rev.get_short_name() != r['revision']:
+						self.output.append('%s has changed branches and cannot be safely updated. Skipping this repo.' % r['path'])
+					else:
+						#Weird stuff has happened - right branch, wrong relationship to bookmark
+						self.output.append('You are out of your element.  The current branch in %s has been in altered in an unusal way and must be manually updated.' % r['path'])
+			else:
+				repo = self.create_repo(r, sub_repos[r['path']])
+				self.output.append('Deleted repo %s check out' % r['path'])
+
+			if recursive:
+				repo.update(recursive)
 
 	def add(self, path, name=None, remote=None, rev=None, vcs=None, use_sha=None):
 		#TODO:handle lists of dirs
@@ -509,6 +552,7 @@ Project methods should only call this function if necessary.'''
 			if remote is not None:
 				update_rug_branch = True
 
+		#If use_sha is not specified, look at existing manifest revision
 		if use_sha is None:
 			use_sha = repo.valid_sha(r.get('revision', lookup_default['revision']))
 
@@ -543,19 +587,21 @@ Project methods should only call this function if necessary.'''
 
 		self.output.append("%s added to manifest" % path)
 
-	def commit(self, message=None, all=False):
-		if (message is None) and all:
-			raise RugError('commit message required for -a')
-
+	def commit(self, message=None, all=False, recursive=False):
 		if not self.bare:
 			for r in self.repos.values():
 				repo = r['repo']
 				if all:
-					if repo.dirty():
+					#commit if needed
+					if recursive and repo.dirty():
+						if message is None:
+							raise RugError('commit message required')
 						repo.commit(message, all=True)
-					#TODO: test for need
-					self.add(r['path'])
-					r = self.repos[r['path']]
+					#add if needed
+					status = self.repo_status(r)
+					if ('B' in status) or ('R' in status):
+						self.add(r['path'])
+						r = self.repos[r['path']]
 				branches = self.get_branch_names(r)
 				if repo.valid_rev(branches['rug_index']):
 					repo.update_ref(branches['rug'], branches['rug_index'])
@@ -570,6 +616,8 @@ Project methods should only call this function if necessary.'''
 			if message is None:
 				raise RugError('commit message required')
 			self.manifest_repo.commit(message, all=True)
+
+		self.output.append("committed revset %s to %s" % (self.revset().get_short_name(), self.dir))
 
 	#TODO: remove this quick hack
 	def test_publish(self, remote=None):
@@ -601,12 +649,12 @@ Project methods should only call this function if necessary.'''
 				repo = r['repo']
 				branches = self.get_branch_names(r)
 				update_repo = False
-				if not repo.valid_rev(branches['bookmark']):
+				if not repo.valid_rev(branches['remote']):
 					update_repo = True
 				else:
 					rug_rev = repo.rev_class(repo, branches['rug'])
-					bookmark_rev = repo.rev_class(repo, branches['bookmark'])
-					update_repo = rug_rev.get_sha() != bookmark_rev.get_sha()
+					remote_rev = repo.rev_class(repo, branches['remote'])
+					update_repo = rug_rev.get_sha() != remote_rev.get_sha()
 				if update_repo:
 					#TODO: verify correctness & consistency of path functions/formats throughout rug
 
