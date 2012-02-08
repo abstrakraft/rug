@@ -1,20 +1,9 @@
 import project
 
 class Repo_Rev(project.Revset):
-	def __init__(self, repo, name):
-		super(Repo_Rev, self).__init__(repo.project, name)
-
-	@classmethod
-	def create(cls, repo, dst, src=None):
-		return super(Repo_Rev, cls).create(repo.project, dst, src)
-
-	@classmethod
-	def cast(cls, repo, rev):
-		#TODO: the cast superclass calls are fragile - rework
-		if isinstance(rev, git.Rev):
-			return cls(repo, revset.name)
-		else:
-			return super(Repo_Rev, cls).cast(repo, rev)
+	@staticmethod
+	def find_repo(repo_finder):
+		return repo_finder.project.manifest_repo
 
 class Repo(object):
 	valid_repo = project.Project.valid_project

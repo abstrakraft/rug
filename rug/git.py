@@ -42,28 +42,37 @@ def shell_cmd(cmd, args, cwd=None, raise_errors=True, print_output=False):
 		return (ret, out, err)
 
 class Rev(object):
-	def __init__(self, repo, name):
-		if not repo.valid_rev(name):
+	def __init__(self, repo_finder, name, unchecked=False):
+		repo = self.find_repo(repo_finder)
+		if (not unchecked) and (not repo.valid_rev(name)):
 			raise UnknownRevisionError('invalid rev %s' % name)
 
+		self.repo_finder = repo_finder
 		self.repo = repo
 		self.name = name
 
-	@classmethod
-	def cast(cls, repo, rev):
-		if isinstance(rev, cls):
-			return rev
-		else:
-			return cls(repo, rev)
+	@staticmethod
+	def find_repo(repo_finder):
+		return repo_finder
 
 	@classmethod
-	def create(cls, repo, dst, src=None):
+	def cast(cls, repo_finder, rev):
+		if isinstance(rev, Rev):
+			unchecked = (rev.repo.dir == cls.find_repo(repo_finder).dir)
+			return cls(repo_finder, rev.name, unchecked=unchecked)
+		else:
+			return cls(repo_finder, rev)
+
+	@classmethod
+	def create(cls, repo_finder, dst, src=None):
+		repo = cls.find_repo(repo_finder)
+
 		if src is None:
 			src = cls(repo, 'HEAD')
 
 		repo.branch_create(dst, src)
 
-		return cls(repo, dst)
+		return cls(repo_finder, dst)
 
 	def is_sha(self):
 		if '_is_sha' not in self.__dict__:
@@ -89,13 +98,14 @@ class Rev(object):
 		return self.get_short_name() == self.get_short_name()
 
 	def is_descendant(self, rev):
-		rev = self.cast(self.repo, rev)
+		rev = self.cast(self.repo_finder, rev)
 		return rev.get_sha() in self.repo.git_cmd(['rev-list', self.get_short_name()]).split()
 
 	def merge_base(self, rev):
 		cls = type(self)
-		return cls.cast(self.repo,
-			self.repo.git_cmd(['merge-base', self.get_short_name(), cls.cast(self.repo, rev).get_short_name()]))
+		rev = self.cast(self.repo_finder, rev)
+		return cls.cast(self.repo_finder, \
+			self.repo.git_cmd(['merge-base', self.get_short_name(), rev.get_short_name()]))
 
 	def can_fastforward(self, rev):
 		return self.get_sha() == self.merge_base(rev).get_sha()

@@ -20,21 +20,9 @@ RUG_SHA_RIDER = 'refs/rug/sha_rider'
 RUG_DEFAULT_DEFAULT = {'revision': 'master', 'vcs': 'git'}
 
 class Revset(git.Rev):
-	def __init__(self, project, name):
-		super(Revset, self).__init__(project.manifest_repo, name)
-
-	@classmethod
-	def create(cls, project, dst, src=None):
-		return super(Revset, cls).create(project.manifest_repo, dst, src)
-
-	@classmethod
-	def cast(cls, project, revset):
-		#TODO: the cast superclass calls are fragile - rework
-		#TODO: super doesn't seem to work in this line...why not?
-		if isinstance(revset, git.Rev):
-			return cls(project, revset.name)
-		else:
-			return super(Revset, cls).cast(project, revset)
+	@staticmethod
+	def find_repo(repo_finder):
+		return repo_finder.manifest_repo
 
 class Project(object):
 	vcs_class = {}
@@ -689,7 +677,6 @@ Project methods should only call this function if necessary.'''
 
 		#Error if we can't publish anything
 		if not ready:
-			print repo_updates
 			raise RugError('\n'.join(error))
 
 		#Push unpublished remotes
