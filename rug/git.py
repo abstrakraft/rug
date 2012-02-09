@@ -241,8 +241,12 @@ class Repo(object):
 	def remote_add(self, remote, url):
 		self.git_cmd(['remote','add', remote, url])
 
-	def remote_set_head(self, remote):
-		self.git_cmd(['remote', 'set-head', remote, '-a'])
+	def remote_set_head(self, remote, suppress_output=True):
+		if suppress_output:
+			f = self.git_func
+		else:
+			f = self.git_cmd
+		f(['remote', 'set-head', remote, '-a'])
 
 	def remote_set_url(self, remote, url):
 		self.git_cmd(['remote','set-url', remote, url])
