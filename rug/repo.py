@@ -9,10 +9,10 @@ class Repo(object):
 	valid_repo = project.Project.valid_project
 	rev_class = Repo_Rev
 
-	def __init__(self, repo_dir):
+	def __init__(self, repo_dir, output_buffer=None):
 		from project import Project
-		self.project = Project(repo_dir)
-		
+		self.project = Project(repo_dir, output_buffer=output_buffer)
+
 		p = self.project
 		mr = self.project.manifest_repo
 		delegated_methods = {
@@ -43,13 +43,13 @@ class Repo(object):
 		self.__dict__.update(delegated_methods)
 
 	@classmethod
-	def init(cls, repo_dir=None):
-		project.Project.init(project_dir=repo_dir)
+	def init(cls, repo_dir=None, output_buffer=None):
+		project.Project.init(project_dir=repo_dir, output_buffer=output_buffer)
 		return cls(repo_dir)
 
 	@classmethod
-	def clone(cls, url, repo_dir=None, remote=None, rev=None):
-		project.Project.clone(url, project_dir=repo_dir, source=remote, revset=rev)
+	def clone(cls, url, repo_dir=None, remote=None, rev=None, output_buffer=None):
+		project.Project.clone(url, project_dir=repo_dir, source=remote, revset=rev, output_buffer=output_buffer)
 		return cls(repo_dir)
 
 	def fetch(self, remote=None):
@@ -68,7 +68,8 @@ class Repo(object):
 		return self.project.test_publish(remote)
 
 	def update(self, recursive=False):
-		self.project.checkout()
+		if self.project.dirty():
+			self.project.checkout()
 		self.project.update(recursive)
 
 project.Project.register_vcs('rug', Repo)

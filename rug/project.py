@@ -6,7 +6,7 @@ import xml.dom.minidom
 import manifest
 import git
 import hierarchy
-import buffer
+import output
 
 class RugError(StandardError):
 	pass
@@ -27,10 +27,10 @@ class Revset(git.Rev):
 class Project(object):
 	vcs_class = {}
 
-	def __init__(self, project_dir, output=None):
-		if output is None:
-			output = buffer.NullBuffer()
-		self.output = output
+	def __init__(self, project_dir, output_buffer=None):
+		if output_buffer is None:
+			output_buffer = output.NullOutputBuffer()
+		self.output = output_buffer
 
 		self.dir = os.path.abspath(project_dir)
 		#Verify validity
@@ -47,7 +47,7 @@ class Project(object):
 			self.rug_dir = os.path.join(self.dir, RUG_DIR)
 		self.manifest_dir = os.path.join(self.rug_dir, 'manifest')
 		self.manifest_filename = os.path.join(self.manifest_dir, 'manifest.xml')
-		self.manifest_repo = git.Repo(self.manifest_dir)
+		self.manifest_repo = git.Repo(self.manifest_dir, output_buffer=self.output.spawn('manifest: '))
 		self.read_manifest()
 
 	def read_manifest(self):
@@ -59,7 +59,7 @@ Project methods should only call this function if necessary.'''
 				abs_path = os.path.abspath(os.path.join(self.dir, path))
 				R = self.vcs_class[self.repos[path]['vcs']]
 				if R.valid_repo(abs_path):
-					self.repos[path]['repo'] = R(abs_path)
+					self.repos[path]['repo'] = R(abs_path, output_buffer=self.output.spawn(path + ': '))
 				else:
 					self.repos[path]['repo'] = None
 
@@ -68,7 +68,7 @@ Project methods should only call this function if necessary.'''
 		cls.vcs_class[vcs] = vcs_class
 
 	@classmethod
-	def find_project(cls, project_dir=None, output=None):
+	def find_project(cls, project_dir=None, output_buffer=None):
 		'Project.find_project(project_dir=pwd) -> project -- climb up the directory tree looking for a valid rug project'
 
 		if project_dir == None:
@@ -77,7 +77,7 @@ Project methods should only call this function if necessary.'''
 		head = project_dir
 		while head:
 			try:
-				return cls(head, output=output)
+				return cls(head, output_buffer=output_buffer)
 			except InvalidProjectError:
 				if head == os.path.sep:
 					head = None
@@ -87,11 +87,11 @@ Project methods should only call this function if necessary.'''
 		raise InvalidProjectError('not a valid rug project')
 
 	@classmethod
-	def init(cls, project_dir, bare=False, output=None):
+	def init(cls, project_dir, bare=False, output_buffer=None):
 		'Project.init -- initialize a new rug repository'
 
-		if output is None:
-			output = buffer.NullBuffer()
+		if output_buffer is None:
+			output_buffer = output.NullOutputBuffer()
 
 		if project_dir == None:
 			project_dir = '.'
@@ -106,19 +106,19 @@ Project methods should only call this function if necessary.'''
 		manifest_dir = os.path.join(rug_dir, 'manifest')
 		manifest_filename = os.path.join(manifest_dir, 'manifest.xml')
 
-		mr = git.Repo.init(manifest_dir)
+		mr = git.Repo.init(manifest_dir, output_buffer=output_buffer.spawn('manifest: '))
 		manifest.write(manifest_filename, {}, {}, {})
 		mr.add(os.path.basename(manifest_filename))
 		mr.commit('Initial commit')
 
-		return cls(project_dir, output=output)
+		return cls(project_dir, output_buffer=output_buffer)
 
 	@classmethod
-	def clone(cls, url, project_dir=None, source=None, revset=None, bare=False, output=None):
+	def clone(cls, url, project_dir=None, source=None, revset=None, bare=False, output_buffer=None):
 		'Project.clone -- clone an existing rug repository'
 
-		if output is None:
-			output = buffer.NullBuffer()
+		if output_buffer is None:
+			output_buffer = output.NullOutputBuffer()
 		#TODO: more output
 
 		#calculate directory
@@ -141,17 +141,17 @@ Project methods should only call this function if necessary.'''
 		manifest_filename = os.path.join(manifest_dir, 'manifest.xml')
 
 		#clone manifest repo into rug directory
-		git.Repo.clone(url, repo_dir=manifest_dir, remote=source, rev=revset)
+		git.Repo.clone(url, repo_dir=manifest_dir, remote=source, rev=revset, output_buffer=output_buffer.spawn('manifest: '))
 
 		#verify valid manifest
 		if not os.path.exists(manifest_filename):
 			raise RugError('invalid manifest repo: no manifest.xml')
 
-		output.append('%s cloned into %s' % (url, project_dir))
+		output_buffer.append('%s cloned into %s' % (url, project_dir))
 
 		#checkout revset
-		p = cls(project_dir, output=output)
-		output.append(p.checkout(revset))
+		p = cls(project_dir, output_buffer=output_buffer)
+		p.checkout(revset)
 
 		return p
 
@@ -381,7 +381,7 @@ Project methods should only call this function if necessary.'''
 		abs_path = os.path.abspath(os.path.join(self.dir, r['path']))
 		url = self.remotes[r['remote']]['fetch'] + '/' + r['name']
 		R = self.vcs_class[r['vcs']]
-		repo = R.clone(url, repo_dir=abs_path, remote=r['remote'], rev=r.get('revision', None))
+		repo = R.clone(url, repo_dir=abs_path, remote=r['remote'], rev=r.get('revision', None), output_buffer=self.output.spawn(r['path'] + ': '))
 		if r['path'] == '.':
 			repo.add_ignore(RUG_DIR)
 		for sr in sub_repos:
@@ -519,13 +519,13 @@ Project methods should only call this function if necessary.'''
 				#(but not if the path of the sub-repo is '.')
 				for (try_vcs, R) in self.vcs_class.items():
 					if R.valid_repo(abs_path):
-						repo = R(abs_path)
+						repo = R(abs_path, output_buffer=self.output.spawn(path + ': '))
 						vcs = try_vcs
 						break
 				if repo is None:
 					raise RugError('unrecognized repo %s' % path)
 			else:
-				repo = vcs_class[vcs](abs_path)
+				repo = vcs_class[vcs](abs_path, output_buffer=self.output.spawn(path + ': '))
 
 			#Add the repo
 			repos[path] = {'path': path}

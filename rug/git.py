@@ -1,6 +1,7 @@
 import os.path
 import subprocess
 import string
+import output
 
 GIT='git'
 GIT_DIR='.git'
@@ -14,28 +15,21 @@ class InvalidRepoError(GitError):
 class UnknownRevisionError(GitError):
 	pass
 
-def shell_cmd(cmd, args, cwd=None, raise_errors=True, print_output=False):
-	'''shell_cmd(cmd, args, cwd=None, raise_errors=True, print_output=False) -> runs a shell command
-	default: returns None
-	raise_errors=True, print_output=False: returns standard output
-	raise_errors=False: returns (ret, stdout, stderr)'''
-	if print_output:
-		stdout = None
-	else:
-		stdout = subprocess.PIPE
+def shell_cmd(cmd, args, cwd=None, raise_errors=True):
+	'''shell_cmd(cmd, args, cwd=None, raise_errors=True) -> runs a shell command
+	raise_errors=True: returns stdout
+	raise_errors=False: returns (returncode, stdout, stderr)'''
 
 	if cwd:
-		proc = subprocess.Popen([cmd]+args, cwd=cwd, stdout=stdout, stderr=subprocess.PIPE)
+		proc = subprocess.Popen([cmd]+args, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 	else:
-		proc = subprocess.Popen([cmd]+args, stdout=stdout, stderr=subprocess.PIPE)
+		proc = subprocess.Popen([cmd]+args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 	(out, err) = proc.communicate()
 	ret = proc.returncode
 	if raise_errors:
 		if ret != 0:
 			raise GitError('%s %s: %s' % (cmd, ' '.join(args), err))
-		elif print_output:
-			return
 		else:
 			return out.rstrip()
 	else:
@@ -99,13 +93,13 @@ class Rev(object):
 
 	def is_descendant(self, rev):
 		rev = self.cast(self.repo_finder, rev)
-		return rev.get_sha() in self.repo.git_cmd(['rev-list', self.get_short_name()]).split()
+		return rev.get_sha() in self.repo.git_func(['rev-list', self.get_short_name()]).split()
 
 	def merge_base(self, rev):
 		cls = type(self)
 		rev = self.cast(self.repo_finder, rev)
 		return cls.cast(self.repo_finder, \
-			self.repo.git_cmd(['merge-base', self.get_short_name(), rev.get_short_name()]))
+			self.repo.git_func(['merge-base', self.get_short_name(), rev.get_short_name()]))
 
 	def can_fastforward(self, rev):
 		return self.get_sha() == self.merge_base(rev).get_sha()
@@ -113,12 +107,15 @@ class Rev(object):
 class Repo(object):
 	rev_class = Rev
 
-	def __init__(self, repo_dir):
+	def __init__(self, repo_dir, output_buffer=None):
+		if output_buffer is None:
+			output_buffer = output.NullOutputBuffer()
+		self.output = output_buffer
 		abs_dir = os.path.abspath(repo_dir)
 		if not self.valid_repo(abs_dir):
 			raise InvalidRepoError('not a valid git repository')
 		self.dir = abs_dir
-		self.bare = (self.git_cmd(['config', 'core.bare']).lower() == 'true')
+		self.bare = (self.git_func(['config', 'core.bare']).lower() == 'true')
 		if self.bare:
 			self.git_dir = self.dir
 		else:
@@ -130,19 +127,25 @@ class Repo(object):
 			(os.path.exists(repo_dir) and (shell_cmd(GIT, ['config', 'core.bare'], cwd=repo_dir, raise_errors=False)[1].lower() == 'true\n'))
 
 	@classmethod
-	def init(cls, repo_dir=None, bare=None):
+	def init(cls, repo_dir=None, bare=None, output_buffer=None):
+		if output_buffer is None:
+			output_buffer = output.NullOutputBuffer()
+
 		args = ['init']
 		if bare: args.append('--bare')
 		if repo_dir: args.append(repo_dir)
 
 		shell_cmd(GIT, args)
 		if repo_dir is None:
-			return cls('.')
+			return cls('.', output_buffer=output_buffer)
 		else:
-			return cls(repo_dir)
+			return cls(repo_dir, output_buffer=output_buffer)
 
 	@classmethod
-	def clone(cls, url, repo_dir=None, remote=None, rev=None, local_branch=None):
+	def clone(cls, url, repo_dir=None, remote=None, rev=None, local_branch=None, output_buffer=None):
+		if output_buffer is None:
+			output_buffer = output.NullOutputBuffer()
+
 		if remote is None:
 			remote = 'origin'
 
@@ -156,7 +159,7 @@ class Repo(object):
 				args.append(repo_dir)
 		
 			shell_cmd(GIT, args)
-			return cls(repo_dir)
+			return cls(repo_dir, output_buffer=output_buffer)
 		elif method == 'manual':
 			if repo_dir:
 				if not os.path.exists(repo_dir):
@@ -164,7 +167,7 @@ class Repo(object):
 			else:
 				repo_dir = os.getcwd()
 
-			repo = cls.init(repo_dir)
+			repo = cls.init(repo_dir, output_buffer=output_buffer)
 			repo.remote_add(remote, url)
 			repo.fetch(remote)
 			#TODO: weirdness: Git can't actually tell what the HEAD of the remote is directly,
@@ -197,11 +200,29 @@ class Repo(object):
 
 			return repo
 
-	def git_cmd(self, args, raise_errors=True, print_output=False):
+	def git_cmd(self, args, raise_errors=True, return_output=False):
+		'''git_cmd(args, raise_errors=True, return_output=False) -> runs a shell command
+		return_output=False: returns None, appends stdout to output buffer
+		return_output=True, raise_errors=True: returns stdout
+		return_output=True, raise_errors=False: returns (returncode, stdout, stderr)'''
 		#if hasattr(self, 'git_dir'):
 		#	return shell_cmd(GIT, args + ['--git-dir=%s' % self.git_dir])
 		#else:
-		return shell_cmd(GIT, args, cwd = self.dir, raise_errors=raise_errors, print_output=print_output)
+		ret = shell_cmd(GIT, args, cwd = self.dir, raise_errors=raise_errors)
+
+		if raise_errors:
+			stdout = ret
+		else:
+			(returncode, stdout, stderr) = ret
+
+		if return_output:
+			return ret
+		else:
+			self.output.append(stdout)
+
+	def git_func(self, args, raise_errors=True):
+		'''git_func(args, raise_errors=True) -> shorthand for git_cmd(args, raise_errors, return_output=True)'''
+		return self.git_cmd(args, raise_errors, return_output=True)
 
 	def head(self):
 		return Rev(self, 'HEAD')
@@ -212,10 +233,10 @@ class Repo(object):
 			args.append('--ignore-submodules')
 
 		#TODO: doesn't account for untracked files (should it?)
-		return not (len(self.git_cmd(args)) == 0)
+		return not (len(self.git_func(args)) == 0)
 
 	def remote_list(self):
-		return self.git_cmd(['remote', 'show']).split()
+		return self.git_func(['remote', 'show']).split()
 
 	def remote_add(self, remote, url):
 		self.git_cmd(['remote','add', remote, url])
@@ -268,7 +289,7 @@ class Repo(object):
 			else:
 				args.append(refspec)
 
-		(ret, out, err) = self.git_cmd(args, raise_errors=False)
+		(ret, out, err) = self.git_func(args, raise_errors=False)
 		return not ret
 
 	#TODO: doesn't work
@@ -281,7 +302,7 @@ class Repo(object):
 
 	def ref_list(self):
 		args = ['show-ref']
-		return map(Rev, [r.split()[1][5:] for r in self.git_cmd(args).split('\n')])
+		return map(Rev, [r.split()[1][5:] for r in self.git_func(args).split('\n')])
 
 	def branch_create(self, dst, src=None, force=False):
 		args = ['branch']
@@ -355,7 +376,7 @@ class Repo(object):
 	#TODO:differentiate between errors and conflicts, act accordingly
 
 	def merge(self, merge_head):
-		return self.git_cmd(['merge', Rev.cast(self, merge_head).get_short_name()], raise_errors=False, print_output=False)
+		return self.git_func(['merge', Rev.cast(self, merge_head).get_short_name()], raise_errors=False)
 
 	def rebase(self, base, onto=None):
 		args = ['rebase']
@@ -363,7 +384,7 @@ class Repo(object):
 			args.extend(['--onto', onto])
 		args.append(Rev.cast(self, base).get_short_name())
 
-		return self.git_cmd(args, raise_errors=False, print_output=False)
+		return self.git_func(args, raise_errors=False)
 
 	def add_ignore(self, pattern):
 		f = open(os.path.join(self.dir, GIT_DIR, 'info', 'exclude'), 'a')
@@ -377,10 +398,10 @@ class Repo(object):
 		if porcelain:
 			args.append('--porcelain')
 
-		return self.git_cmd(args, raise_errors=True, print_output=False)
+		return self.git_func(args)
 
 	def diff(self):
-		return self.git_cmd(['diff'])
+		return self.git_func(['diff'])
 
 	def rev_parse(self, rev, full_name=False, abbrev_ref=False):
 		args = ['rev-parse']
@@ -391,7 +412,7 @@ class Repo(object):
 		args.append(rev)
 
 		try:
-			return self.git_cmd(args)
+			return self.git_func(args)
 		except GitError as e:
 			if e.args[0].find('unknown revision') > -1:
 				raise UnknownRevisionError('Unknown revision %s' % rev)
@@ -423,4 +444,4 @@ class Repo(object):
 		return rp[:len(rev)] == rev
 
 	def symbolic_ref(self, ref):
-		return self.git_cmd(['symbolic-ref', ref])
+		return self.git_func(['symbolic-ref', ref])
