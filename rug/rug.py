@@ -3,6 +3,7 @@ import getopt
 import os.path
 from project import Project, RugError
 import output
+from version import __version__
 
 def init(output_buffer, optdict, project_dir=None):
 	Project.init(project_dir, optdict.has_key('--bare'), output_buffer=output_buffer)
@@ -97,25 +98,31 @@ rug_commands = {
 	}
 
 def main():
-	if (len(sys.argv) < 2) or not rug_commands.has_key(sys.argv[1]):
+	if (len(sys.argv) < 2):
 		#TODO: write usage
 		print 'rug usage'
 	else:
-		(func, pass_project, optspec, long_options, return_stdout) = rug_commands[sys.argv[1]]
-		[optlist, args] = getopt.gnu_getopt(sys.argv[2:], optspec, long_options)
-		optdict = dict(optlist)
-		if return_stdout:
-			file = sys.stderr
+		command = sys.argv[1]
+		if command == 'version':
+			print 'rug version %s' % __version__
+		elif command not in rug_commands:
+			print 'rug usage'
 		else:
-			file = sys.stdout
-		output_buffer = output.WriterOutputBuffer(output.FileWriter(file))
-		if pass_project:
-			ret = func(Project.find_project(output_buffer=output_buffer), optdict, *args)
-		else:
-			ret = func(output_buffer, optdict, *args)
+			(func, pass_project, optspec, long_options, return_stdout) = rug_commands[command]
+			[optlist, args] = getopt.gnu_getopt(sys.argv[2:], optspec, long_options)
+			optdict = dict(optlist)
+			if return_stdout:
+				file = sys.stderr
+			else:
+				file = sys.stdout
+			output_buffer = output.WriterOutputBuffer(output.FileWriter(file))
+			if pass_project:
+				ret = func(Project.find_project(output_buffer=output_buffer), optdict, *args)
+			else:
+				ret = func(output_buffer, optdict, *args)
 
-		if return_stdout:
-			print ret
+			if return_stdout:
+				print ret
 
 if __name__ == '__main__':
 	main()

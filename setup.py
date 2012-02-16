@@ -5,9 +5,11 @@ except ImportError:
     use_setuptools()
     from setuptools import setup, find_packages
 
+from rug import __version__
+
 setup(
     name='rug',
-    version="0.0",
+    version=__version__,
     description='manage repositories of repositories',
     url='https://github.com/abstrakraft/rug',
     license='GPLv3',
