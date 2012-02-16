@@ -11,7 +11,20 @@ def clone(output_buffer, optdict, url=None, project_dir=None):
 	if not url:
 		raise RugError('url must be specified')
 
-	Project.clone(url=url, project_dir=project_dir, source=optdict.get('-o'), revset=optdict.get('-b'), bare=optdict.has_key('--bare'), output_buffer=output_buffer)
+	if optdict.has_key('-c'):
+		repo_config = dict(map(lambda x: x.split('='), optdict['-c'].split(',')))
+	else:
+		repo_config = None
+
+	Project.clone(
+		url=url,
+		project_dir=project_dir,
+		source=optdict.get('-o'),
+		revset=optdict.get('-b'),
+		bare=optdict.has_key('--bare'),
+	    repo_config=repo_config,
+		output_buffer=output_buffer
+	)
 
 def checkout(proj, optdict, rev=None, src=None):
 	if '-b' in optdict:
@@ -67,7 +80,7 @@ def source_add(proj, optdict, source=None, url=None):
 #(function, pass project flag, options, long_options, return_stdout)
 rug_commands = {
 	'init': (init, False, '', ['--bare'], False),
-	'clone': (clone, False, 'b:o:', ['--bare'], False),
+	'clone': (clone, False, 'b:o:c:', ['--bare'], False),
 	'checkout': (checkout, True, 'b', [], False),
 	'fetch': (fetch, True, '', [], False),
 	'update': (update, True, 'r', [], False),

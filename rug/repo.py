@@ -48,8 +48,8 @@ class Repo(object):
 		return cls(repo_dir)
 
 	@classmethod
-	def clone(cls, url, repo_dir=None, remote=None, rev=None, output_buffer=None):
-		project.Project.clone(url, project_dir=repo_dir, source=remote, revset=rev, output_buffer=output_buffer)
+	def clone(cls, url, repo_dir=None, remote=None, rev=None, config=None, output_buffer=None):
+		project.Project.clone(url, project_dir=repo_dir, source=remote, revset=rev, repo_config=config, output_buffer=output_buffer)
 		return cls(repo_dir)
 
 	def fetch(self, remote=None):

@@ -2,6 +2,7 @@
 import os
 import sys
 import xml.dom.minidom
+import config
 
 import manifest
 import git
@@ -18,6 +19,8 @@ RUG_DIR = '.rug'
 #TODO: should this be configurable or in the manifest?
 RUG_SHA_RIDER = 'refs/rug/sha_rider'
 RUG_DEFAULT_DEFAULT = {'revision': 'master', 'vcs': 'git'}
+RUG_CONFIG = 'config'
+RUG_REPO_CONFIG_SECTION = 'repoconfig'
 
 class Revset(git.Rev):
 	@staticmethod
@@ -103,6 +106,11 @@ Project methods should only call this function if necessary.'''
 			rug_dir = project_dir
 		else:
 			rug_dir = os.path.join(project_dir, RUG_DIR)
+		os.makedirs(rug_dir)
+
+		config_file = os.path.join(rug_dir, RUG_CONFIG)
+		open(config_file, 'w').close()
+
 		manifest_dir = os.path.join(rug_dir, 'manifest')
 		manifest_filename = os.path.join(manifest_dir, 'manifest.xml')
 
@@ -114,7 +122,7 @@ Project methods should only call this function if necessary.'''
 		return cls(project_dir, output_buffer=output_buffer)
 
 	@classmethod
-	def clone(cls, url, project_dir=None, source=None, revset=None, bare=False, output_buffer=None):
+	def clone(cls, url, project_dir=None, source=None, revset=None, bare=False, repo_config=None, output_buffer=None):
 		'Project.clone -- clone an existing rug repository'
 
 		if output_buffer is None:
@@ -137,11 +145,16 @@ Project methods should only call this function if necessary.'''
 			rug_dir = project_dir
 		else:
 			rug_dir = os.path.join(project_dir, RUG_DIR)
+		os.makedirs(rug_dir)
+
+		config_file = os.path.join(rug_dir, RUG_CONFIG)
+		open(config_file, 'w').close()
+
 		manifest_dir = os.path.join(rug_dir, 'manifest')
 		manifest_filename = os.path.join(manifest_dir, 'manifest.xml')
 
 		#clone manifest repo into rug directory
-		git.Repo.clone(url, repo_dir=manifest_dir, remote=source, rev=revset, output_buffer=output_buffer.spawn('manifest: '))
+		git.Repo.clone(url, repo_dir=manifest_dir, remote=source, rev=revset, config=repo_config, output_buffer=output_buffer.spawn('manifest: '))
 
 		#verify valid manifest
 		if not os.path.exists(manifest_filename):
@@ -151,6 +164,9 @@ Project methods should only call this function if necessary.'''
 
 		#checkout revset
 		p = cls(project_dir, output_buffer=output_buffer)
+		if repo_config is not None:
+			for (name, value) in repo_config.items():
+				p.set_config(RUG_REPO_CONFIG_SECTION, name, value)
 		p.checkout(revset)
 
 		return p
@@ -171,6 +187,17 @@ Project methods should only call this function if necessary.'''
 		manifest_dir = os.path.join(project_dir, 'manifest')
 		return git.Repo.valid_repo(manifest_dir) \
 			and os.path.exists(os.path.join(manifest_dir, 'manifest.xml'))
+
+	def set_config(self, section, name, value):
+		config_file = os.path.join(self.rug_dir, RUG_CONFIG)
+		cf = config.ConfigFile.from_path(config_file)
+		cf.set(section, name, value)
+		cf.to_path(config_file)
+
+	def get_config(self, section, name=None):
+		config_file = os.path.join(self.rug_dir, RUG_CONFIG)
+		cf = config.ConfigFile.from_path(config_file)
+		return cf.get(section, name)
 
 	def get_branch_names(self, r):
 		revision = r.get('revision', 'HEAD')
@@ -381,7 +408,12 @@ Project methods should only call this function if necessary.'''
 		abs_path = os.path.abspath(os.path.join(self.dir, r['path']))
 		url = self.remotes[r['remote']]['fetch'] + '/' + r['name']
 		R = self.vcs_class[r['vcs']]
-		repo = R.clone(url, repo_dir=abs_path, remote=r['remote'], rev=r.get('revision', None), output_buffer=self.output.spawn(r['path'] + ': '))
+
+		try:
+			config = self.get_config(RUG_REPO_CONFIG_SECTION)
+		except KeyError:
+			config = None
+		repo = R.clone(url, repo_dir=abs_path, remote=r['remote'], rev=r.get('revision', None), config=config, output_buffer=self.output.spawn(r['path'] + ': '))
 		if r['path'] == '.':
 			repo.add_ignore(RUG_DIR)
 		for sr in sub_repos:

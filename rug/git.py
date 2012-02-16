@@ -3,8 +3,8 @@ import subprocess
 import string
 import output
 
-GIT='git'
-GIT_DIR='.git'
+GIT = 'git'
+GIT_DIR = '.git'
 
 class GitError(StandardError):
 	pass
@@ -142,7 +142,7 @@ class Repo(object):
 			return cls(repo_dir, output_buffer=output_buffer)
 
 	@classmethod
-	def clone(cls, url, repo_dir=None, remote=None, rev=None, local_branch=None, output_buffer=None):
+	def clone(cls, url, repo_dir=None, remote=None, rev=None, local_branch=None, config=None, output_buffer=None):
 		if output_buffer is None:
 			output_buffer = output.NullOutputBuffer()
 
@@ -151,16 +151,15 @@ class Repo(object):
 
 		#A manual clone is necessary to avoid git's check for an empty directory.
 		#Really need to find another method - manual clone is a maintenance PITA
-		#method = 'standard'
-		method = 'manual'
-		if method == 'standard':
+		do_standard = False
+		if do_standard:
 			args = ['clone', url]
 			if repo_dir:
 				args.append(repo_dir)
 		
 			shell_cmd(GIT, args)
 			return cls(repo_dir, output_buffer=output_buffer)
-		elif method == 'manual':
+		else:
 			if repo_dir:
 				if not os.path.exists(repo_dir):
 					os.makedirs(repo_dir)
@@ -168,6 +167,9 @@ class Repo(object):
 				repo_dir = os.getcwd()
 
 			repo = cls.init(repo_dir, output_buffer=output_buffer)
+			if config is not None:
+				for (name, value) in config.items():
+					repo.config(name, value)
 			repo.remote_add(remote, url)
 			repo.fetch(remote)
 			#TODO: weirdness: Git can't actually tell what the HEAD of the remote is directly,
@@ -389,6 +391,12 @@ class Repo(object):
 		args.append(Rev.cast(self, base).get_short_name())
 
 		return self.git_func(args, raise_errors=False)
+
+	def config(self, name, value=None):
+		if value is None:
+			return self.git_func(['config', name])
+		else:
+			self.git_cmd(['config', name, value])
 
 	def add_ignore(self, pattern):
 		f = open(os.path.join(self.dir, GIT_DIR, 'info', 'exclude'), 'a')
