@@ -557,7 +557,7 @@ Project methods should only call this function if necessary.'''
 				if repo is None:
 					raise RugError('unrecognized repo %s' % path)
 			else:
-				repo = vcs_class[vcs](abs_path, output_buffer=self.output.spawn(path + ': '))
+				repo = self.vcs_class[vcs](abs_path, output_buffer=self.output.spawn(path + ': '))
 
 			#Add the repo
 			repos[path] = {'path': path}
