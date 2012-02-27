@@ -556,34 +556,39 @@ Project methods should only call this function if necessary.'''
 						break
 				if repo is None:
 					raise RugError('unrecognized repo %s' % path)
-			else:
+			elif not self.bare:
 				repo = self.vcs_class[vcs](abs_path, output_buffer=self.output.spawn(path + ': '))
+			else:
+				repo = None
 
 			#Add the repo
 			repos[path] = {'path': path}
 
 			#TODO: we don't know if the remote even exists yet, so can't set up all branches
 			#logic elsewhere should be able to handle this possibility (remote & bookmark branches don't exist)
-			if not self.bare:
-				update_rug_branch = True
+			update_rug_branch = True
 		else:
 			repo = r['repo']
 
+			#TODO: rethink this condition
 			if remote is not None:
 				update_rug_branch = True
 
-		#If use_sha is not specified, look at existing manifest revision
-		if use_sha is None:
-			use_sha = repo.valid_sha(r.get('revision', lookup_default['revision']))
+		if not self.bare:
+			#If use_sha is not specified, look at existing manifest revision
+			if use_sha is None:
+				use_sha = repo.valid_sha(r.get('revision', lookup_default['revision']))
 
-		#Get the rev
-		if rev is None:
-			rev = repo.head()
+			#Get the rev
+			if rev is None:
+				rev = repo.head()
+			else:
+				rev = repo.rev_class.cast(repo, rev)
+			if use_sha:
+				rev = repo.rev_class(repo, rev.get_sha())
+			revision = rev.get_short_name()
 		else:
-			rev = repo.rev_class.cast(repo, rev)
-		if use_sha:
-			rev = repo.rev_class(repo, rev.get_sha())
-		revision = rev.get_short_name()
+			revision = rev
 
 		#Update repo properties
 		for p in ['revision', 'name', 'remote', 'vcs']:
@@ -598,12 +603,13 @@ Project methods should only call this function if necessary.'''
 		repo = r['repo']
 		branches = self.get_branch_names(r)
 
-		#Update rug_index
-		repo.update_ref(branches['rug_index'], rev)
+		if not self.bare:
+			#Update rug_index
+			repo.update_ref(branches['rug_index'], rev)
 
-		#If this is a new repo, set the rug branch
-		if update_rug_branch:
-			repo.update_ref(branches['rug'], rev)
+			#If this is a new repo, set the rug branch
+			if update_rug_branch:
+				repo.update_ref(branches['rug'], rev)
 
 		self.output.append("%s added to manifest" % path)
 
