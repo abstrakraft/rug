@@ -599,11 +599,12 @@ Project methods should only call this function if necessary.'''
 		#Write the manifest and reload repos
 		manifest.write(self.manifest_filename, remotes, repos, default)
 		self.read_manifest()
-		r = self.repos[path]
-		repo = r['repo']
-		branches = self.get_branch_names(r)
 
 		if not self.bare:
+			r = self.repos[path]
+			repo = r['repo']
+			branches = self.get_branch_names(r)
+
 			#Update rug_index
 			repo.update_ref(branches['rug_index'], rev)
 
