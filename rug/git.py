@@ -365,11 +365,11 @@ class Repo(object):
 	def reset(self, branch, mode=None):
 		args = ['reset']
 		if mode is not None:
-			if mode == 0:
+			if mode == self.SOFT:
 				args.append('--soft')
-			elif mode == 1:
+			elif mode == self.MIXED:
 				args.append('--mixed')
-			elif mode == 2:
+			elif mode == self.HARD:
 				args.append('--hard')
 			else:
 				#TODO: error
