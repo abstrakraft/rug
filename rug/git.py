@@ -122,9 +122,13 @@ class Repo(object):
 			self.git_dir = os.path.join(self.dir, GIT_DIR)
 
 	@classmethod
-	def valid_repo(cls, repo_dir):
-		return os.path.exists(os.path.join(repo_dir, GIT_DIR)) or \
-			(os.path.exists(repo_dir) and (shell_cmd(GIT, ['config', 'core.bare'], cwd=repo_dir, raise_errors=False)[1].lower() == 'true\n'))
+	def valid_repo(cls, repo):
+		try:
+			shell_cmd(GIT, ['ls-remote', repo])
+		except GitError:
+			return False
+		else:
+			return True
 
 	@classmethod
 	def init(cls, repo_dir=None, bare=None, output_buffer=None):
@@ -261,6 +265,14 @@ class Repo(object):
 
 	def remote_set_url(self, remote, url):
 		self.git_cmd(['remote','set-url', remote, url])
+
+	def ls_remote(self, remote):
+		revs = self.git_func(['ls-remote', remote])
+		revs = map(lambda line:line.split(), revs.split('\n'))
+		ref_dict = {}
+		for (sha, ref) in revs:
+			ref_dict[ref] = sha
+		return ref_dict
 
 	def fetch(self, remote=None):
 		args = ['fetch', '-v']
