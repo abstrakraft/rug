@@ -358,6 +358,14 @@ Project methods should only call this function if necessary.'''
 
 		self.output.append('remote %s added' % remote)
 
+	def default_add(self, field, value):
+		(remotes, repos, default) = manifest.read(self.manifest_filename, apply_default=False)
+		default[field] = value
+		manifest.write(self.manifest_filename, remotes, repos, default)
+		self.read_manifest()
+
+		self.output.append('default added: %s=%s' % (field, value))
+
 	def checkout(self, revset=None):
 		'check out a revset'
 
