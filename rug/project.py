@@ -54,8 +54,7 @@ class Project(object):
 		self.read_manifest()
 
 	def read_manifest(self):
-		'''Project.read_manifest() -- read the manifest file.
-Project methods should only call this function if necessary.'''
+		'''Project.read_manifest() -- read the manifest file.'''
 		(self.remotes, self.repos) = manifest.read(self.manifest_filename, default_default=RUG_DEFAULT_DEFAULT)
 		if not self.bare:
 			for path in self.repos:
@@ -255,7 +254,7 @@ Project methods should only call this function if necessary.'''
 	def revset_list(self):
 		'return the list of available revsets'
 		#TODO: refs or branches?
-		return map(Revset, self.manifest_repo.ref_list())
+		return map(lambda rs: Revset.cast(self, rs), self.manifest_repo.ref_list())
 
 	def revset_create(self, dst, src=None):
 		'create a new revset'

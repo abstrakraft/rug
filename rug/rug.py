@@ -47,6 +47,9 @@ def revset(proj, optdict, dst=None, src=None):
 	else:
 		proj.revset_create(dst, src)
 
+def revset_list(proj, optdict):
+	return '\n'.join(map(lambda rs: rs.get_short_name(), proj.revset_list()))
+
 def add(proj, optdict, project_dir=None, name=None, remote=None, rev=None):
 	if not project_dir:
 		raise RugError('unspecified directory')
@@ -87,6 +90,7 @@ rug_commands = {
 	'update': (update, True, 'r', [], False),
 	'status': (status, True, 'p', [], True),
 	'revset': (revset, True, '', [], True),
+	'revset_list': (revset_list, True, '', [], True),
 	'add': (add, True, 'sv:', [], False),
 	'commit': (commit, True, 'm:ar', [], False),
 	'publish': (publish, True, '', [], False),

@@ -329,7 +329,7 @@ class Repo(object):
 
 	def ref_list(self):
 		args = ['show-ref']
-		return map(Rev, [r.split()[1][5:] for r in self.git_func(args).split('\n')])
+		return map(lambda r: Rev(self, r), [r.split()[1][5:] for r in self.git_func(args).split('\n')])
 
 	def branch_create(self, dst, src=None, force=False):
 		args = ['branch']
