@@ -146,7 +146,7 @@ class Repo(object):
 			return cls(repo_dir, output_buffer=output_buffer)
 
 	@classmethod
-	def clone(cls, url, repo_dir=None, remote=None, rev=None, local_branch=None, config=None, output_buffer=None):
+	def clone(cls, url, repo_dir=None, remote=None, rev=None, local_branch=None, bare=None, config=None, output_buffer=None):
 		if output_buffer is None:
 			output_buffer = output.NullOutputBuffer()
 
@@ -160,6 +160,7 @@ class Repo(object):
 			args = ['clone', url]
 			if repo_dir:
 				args.append(repo_dir)
+			if bare: args.append('--bare')
 		
 			shell_cmd(GIT, args)
 			return cls(repo_dir, output_buffer=output_buffer)
@@ -168,36 +169,40 @@ class Repo(object):
 				if not os.path.exists(repo_dir):
 					os.makedirs(repo_dir)
 			else:
+				#TODO: this is probably a bad idea
 				repo_dir = os.getcwd()
 
-			repo = cls.init(repo_dir, output_buffer=output_buffer)
+			repo = cls.init(repo_dir, bare=bare, output_buffer=output_buffer)
 			if config is not None:
 				for (name, value) in config.items():
 					repo.config(name, value)
-			repo.remote_add(remote, url)
+			if bare:
+				repo.config('core.bare', 'true')
+			repo.remote_add(remote, url, mirror_fetch=repo.bare)
 			repo.fetch(remote)
-			repo.remote_set_head(remote)
 
-			if rev and repo.valid_sha(rev):
-				#rev is a Commit ID
-				repo.checkout(rev)
-			else:
-				if rev:
-					remote_branch = Rev(repo, '%s/%s' % (remote, rev))
-					if not local_branch:
-						local_branch = rev
+			if not repo.bare:
+				repo.remote_set_head(remote)
+				if rev and repo.valid_sha(rev):
+					#rev is a Commit ID
+					repo.checkout(rev)
 				else:
-					remote_branch = Rev(repo, 'refs/remotes/%s/HEAD' % remote)
-					if not local_branch:
-						#remove refs/remotes/<origin>/ for the local version
-						local_branch = '/'.join(remote_branch.get_long_name().split('/')[3:])
-				#Strange things can happen here if local_branch is 'master', since git considers
-				#the repo to be on branch master, although it doesn't technically exist yet.
-				#'checkout -b' doesn't quite to know what to make of this situation, so we branch
-				#explicitly.  Also, checkout will try to merge local changes into the checkout
-				#(which will delete everything), so we force a clean checkout
-				local_branch = Rev.create(repo, local_branch, remote_branch)
-				repo.checkout(local_branch, force=True)
+					if rev:
+						remote_branch = Rev(repo, '%s/%s' % (remote, rev))
+						if not local_branch:
+							local_branch = rev
+					else:
+						remote_branch = Rev(repo, 'refs/remotes/%s/HEAD' % remote)
+						if not local_branch:
+							#remove refs/remotes/<origin>/ for the local version
+							local_branch = '/'.join(remote_branch.get_long_name().split('/')[3:])
+					#Strange things can happen here if local_branch is 'master', since git considers
+					#the repo to be on branch master, although it doesn't technically exist yet.
+					#'checkout -b' doesn't quite to know what to make of this situation, so we branch
+					#explicitly.  Also, checkout will try to merge local changes into the checkout
+					#(which will delete everything), so we force a clean checkout
+					local_branch = Rev.create(repo, local_branch, remote_branch)
+					repo.checkout(local_branch, force=True)
 
 			return repo
 
@@ -239,8 +244,11 @@ class Repo(object):
 	def remote_list(self):
 		return self.git_func(['remote', 'show']).split()
 
-	def remote_add(self, remote, url):
-		self.git_cmd(['remote','add', remote, url])
+	def remote_add(self, remote, url, mirror_fetch=None):
+		args = ['remote','add', remote, url]
+		if mirror_fetch:
+			args.append('--mirror=fetch')
+		self.git_cmd(args)
 
 	def remote_set_head(self, remote):
 		#weirdness: Git can't actually tell what the HEAD of the remote is directly,
