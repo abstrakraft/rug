@@ -172,11 +172,6 @@ class Repo(object):
 					repo.config(name, value)
 			repo.remote_add(remote, url)
 			repo.fetch(remote)
-			#TODO: weirdness: Git can't actually tell what the HEAD of the remote is directly,
-			#just what it's SHA is.  Which means that if multiple remote branches are at the HEAD sha,
-			#git can't tell which is the actual HEAD.  'git remote set-head -a' errors in this case.
-			#Amazingly, 'git clone' just guesses, and may guess wrong.  This behavior is seriously broken.
-			#see guess_remote_host in git/remote.c
 			repo.remote_set_head(remote)
 
 			if rev and repo.valid_sha(rev):
@@ -243,12 +238,26 @@ class Repo(object):
 	def remote_add(self, remote, url):
 		self.git_cmd(['remote','add', remote, url])
 
-	def remote_set_head(self, remote, suppress_output=True):
-		if suppress_output:
-			f = self.git_func
+	def remote_set_head(self, remote):
+		#weirdness: Git can't actually tell what the HEAD of the remote is directly,
+		#just what it's SHA is.  Which means that if multiple remote branches are at the HEAD sha,
+		#git can't tell which is the actual HEAD.  'git remote set-head -a' errors in this case.
+		#Amazingly, 'git clone' just guesses, and may guess wrong.  This behavior is seriously broken.
+		#see guess_remote_host in git/remote.c
+
+		#Error free version (mimics guess_remote_host)
+		#We could run remote set-head -a, and parse the error output, but that would be error-prone
+		#and fragile
+		refs = self.ls_remote(remote)
+		#TODO: is it possible to have no HEAD?
+		head_sha = refs['HEAD']
+		matching_refs = [key[len('refs/heads')+1:] for (key, val) in refs.items() if (val == head_sha) and (key.startswith('refs/heads'))]
+		if 'master' in matching_refs:
+			head_ref = 'master'
 		else:
-			f = self.git_cmd
-		f(['remote', 'set-head', remote, '-a'])
+			#TODO: can there be no matching refs?
+			head_ref = matching_refs[0]
+		self.git_cmd(['remote', 'set-head', remote, head_ref])
 
 	def remote_set_url(self, remote, url):
 		self.git_cmd(['remote','set-url', remote, url])
