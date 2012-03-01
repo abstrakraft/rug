@@ -52,21 +52,21 @@ def write(filename, remotes, repos, default):
 
 	#Defaults
 	default_node = doc.createElement('default')
-	for (k,v) in default.items():
+	for (k,v) in sorted(default.items(), key=lambda x:x[0]):
 		default_node.setAttribute(k,v)
 	manifest.appendChild(default_node)
 
 	#Remotes
-	for remote in remotes.values():
+	for remote in sorted(remotes.values(), key=lambda x:x['name']):
 		remote_node = doc.createElement('remote')
-		for (k,v) in remote.items():
+		for (k,v) in sorted(remote.items(), key=lambda x:x[0]):
 			remote_node.setAttribute(k,v)
 		manifest.appendChild(remote_node)
 
 	#Repos
-	for repo in repos.values():
+	for repo in sorted(repos.values(), key=lambda x:x['name']):
 		repo_node = doc.createElement('repo')
-		for (k,v) in repo.items():
+		for (k,v) in sorted(repo.items(), key=lambda x:x[0]):
 			repo_node.setAttribute(k,v)
 		manifest.appendChild(repo_node)
 
