@@ -154,7 +154,17 @@ Project methods should only call this function if necessary.'''
 		manifest_filename = os.path.join(manifest_dir, 'manifest.xml')
 
 		#clone manifest repo into rug directory
-		git.Repo.clone(url, repo_dir=manifest_dir, remote=source, rev=revset, config=repo_config, output_buffer=output_buffer.spawn('manifest: '))
+		candidate_urls = [url, '%s/.rug/manifest' % url, '%s/manifest' % url]
+		clone_url = None
+		for cu in candidate_urls:
+			if git.Repo.valid_repo(cu):
+				clone_url = cu
+				break
+		if clone_url:
+			git.Repo.clone(clone_url, repo_dir=manifest_dir, remote=source, rev=revset,
+			               config=repo_config, output_buffer=output_buffer.spawn('manifest: '))
+		else:
+			raise RugError('%s does not seem to be a rug project' % url)
 
 		#verify valid manifest
 		if not os.path.exists(manifest_filename):
