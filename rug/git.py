@@ -478,3 +478,6 @@ class Repo(object):
 
 	def symbolic_ref(self, ref):
 		return self.git_func(['symbolic-ref', ref])
+
+	def symbolic_ref_set(self, ref, dst):
+		self.git_cmd(['symbolic-ref', ref, dst])
