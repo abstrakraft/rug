@@ -549,7 +549,7 @@ Project methods should only call this function if necessary.'''
 
 		r = self.repos.get(path, None)
 		if r is None:
-			# Verify inputs
+			# Validate inputs
 			if name is None:
 				raise RugError('new repos must specify a name')
 			if remote is None:
@@ -560,42 +560,55 @@ Project methods should only call this function if necessary.'''
 				if vcs is None:
 					raise RugError('new repos in bare projects must specify a vcs')
 
-			#Find vcs if not specified, and create repo object
-			abs_path = os.path.join(self.dir, path)
-			if vcs is None:
-				repo = None
-				#TODO: rug needs to take priority here, as rug repos with sub-repos at '.'
-				#will look like the sub-repo vcs as well as a rug repo
-				#(but not if the path of the sub-repo is '.')
-				for (try_vcs, R) in self.vcs_class.items():
-					if R.valid_repo(abs_path):
-						repo = R(abs_path, output_buffer=self.output.spawn(path + ': '))
-						vcs = try_vcs
-						break
-				if repo is None:
-					raise RugError('unrecognized repo %s' % path)
-			elif not self.bare:
-				repo = self.vcs_class[vcs](abs_path, output_buffer=self.output.spawn(path + ': '))
-			else:
-				repo = None
+		if self.bare:
+			#Can't really test/validate anything here since there's no repo
+			#Hope the user knows what they're doing
 
 			#Add the repo
 			repos[path] = {'path': path}
 
-			#TODO: we don't know if the remote even exists yet, so can't set up all branches
-			#logic elsewhere should be able to handle this possibility (remote & bookmark branches don't exist)
-			update_rug_branch = True
+			revision = rev
 		else:
-			repo = r['repo']
+			if r is None:
+				#New repository
+				#Find vcs if not specified, and create repo object
+				abs_path = os.path.join(self.dir, path)
+				if vcs is None:
+					repo = None
+					#TODO: rug needs to take priority here, as rug repos with sub-repos at '.'
+					#will look like the sub-repo vcs as well as a rug repo
+					#(but not if the path of the sub-repo is '.')
+					for (try_vcs, R) in self.vcs_class.items():
+						if R.valid_repo(abs_path):
+							repo = R(abs_path, output_buffer=self.output.spawn(path + ': '))
+							vcs = try_vcs
+							break
+					if repo is None:
+						raise RugError('unrecognized repo %s' % path)
+				else:
+					repo = self.vcs_class[vcs](abs_path, output_buffer=self.output.spawn(path + ': '))
 
-			#TODO: rethink this condition
-			if remote is not None:
+				#Add the repo
+				repos[path] = {'path': path}
+
+				#TODO: we don't know if the remote even exists yet, so can't set up all branches
+				#logic elsewhere should be able to handle this possibility (remote & bookmark branches don't exist)
 				update_rug_branch = True
 
-		if not self.bare:
-			#If use_sha is not specified, look at existing manifest revision
-			if use_sha is None:
-				use_sha = repo.valid_sha(r.get('revision', lookup_default['revision']))
+				#TODO: should this be required?  If not, what should the default be?
+				if use_sha is None:
+					use_sha = False
+			else:
+				#Modify existing repo
+				repo = r['repo']
+
+				#TODO: rethink this condition
+				if remote is not None:
+					update_rug_branch = True
+
+				#If use_sha is not specified, look at existing manifest revision
+				if use_sha is None:
+					use_sha = repo.valid_sha(r.get('revision', lookup_default['revision']))
 
 			#Get the rev
 			if rev is None:
@@ -605,12 +618,10 @@ Project methods should only call this function if necessary.'''
 			if use_sha:
 				rev = repo.rev_class(repo, rev.get_sha())
 			revision = rev.get_short_name()
-		else:
-			revision = rev
 
 		#Update repo properties
 		for p in ['revision', 'name', 'remote', 'vcs']:
-			pval = eval(p)
+			pval = locals()[p]
 			if (pval is not None) and (pval != lookup_default.get(p)):
 				repos[path][p] = pval
 
