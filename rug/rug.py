@@ -62,6 +62,16 @@ def add(proj, optdict, project_dir=None, name=None, remote=None, rev=None):
 	abs_path = os.path.abspath(project_dir)
 	path = os.path.relpath(abs_path, proj.dir)
 	proj.add(path=path, name=name, remote=remote, rev=rev, vcs=vcs, use_sha=use_sha)
+	
+def remove(proj, optdict, project_dir=None):
+	if not project_dir:
+		raise RugError('unspecified directory')
+	
+	#Command-line interprets relative to cwd,
+	#but python interface is relative to project root
+	abs_path = os.path.abspath(project_dir)
+	path = os.path.relpath(abs_path, proj.dir)
+	proj.remove(path=path)
 
 def commit(proj, optdict):
 	proj.commit(message=optdict.get('-m'), all=optdict.has_key('-a'), recursive=optdict.has_key('-r'))
@@ -92,6 +102,7 @@ rug_commands = {
 	'revset': (revset, True, '', [], True),
 	'revset_list': (revset_list, True, '', [], True),
 	'add': (add, True, 'sv:', [], False),
+	'remove': (remove, True, '', [], False),
 	'commit': (commit, True, 'm:ar', [], False),
 	'publish': (publish, True, '', [], False),
 	'remote_list': (remote_list, True, '', [], True),

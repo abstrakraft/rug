@@ -642,6 +642,27 @@ class Project(object):
 
 		self.output.append("%s added to manifest" % path)
 
+	def remove(self, path):
+		"""
+		Remove a repo from the manifest
+		"""
+
+		(remotes, repos, default) = manifest.read(self.manifest_filename, apply_default=False)
+		lookup_default = {}
+		lookup_default.update(RUG_DEFAULT_DEFAULT)
+		lookup_default.update(default)
+		
+		if path not in repos:
+		    raise RugError('unrecognized repo %s' % path)
+		
+		del(repos[path])
+		
+		manifest.write(self.manifest_filename, remotes, repos, default)
+		self.read_manifest()
+		
+		self.output.append("%s removed from manifest" % path)
+		
+
 	def commit(self, message=None, all=False, recursive=False):
 		if not self.bare:
 			for r in self.repos.values():
