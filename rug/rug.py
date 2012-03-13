@@ -23,7 +23,7 @@ def clone(output_buffer, optdict, url=None, project_dir=None):
 		source=optdict.get('-o'),
 		revset=optdict.get('-b'),
 		bare=optdict.has_key('--bare'),
-	    repo_config=repo_config,
+		repo_config=repo_config,
 		output_buffer=output_buffer
 	)
 
@@ -66,7 +66,7 @@ def add(proj, optdict, project_dir=None, name=None, remote=None, rev=None):
 def remove(proj, optdict, project_dir=None):
 	if not project_dir:
 		raise RugError('unspecified directory')
-	
+
 	#Command-line interprets relative to cwd,
 	#but python interface is relative to project root
 	abs_path = os.path.abspath(project_dir)

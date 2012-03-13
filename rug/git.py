@@ -182,27 +182,36 @@ class Repo(object):
 			repo.fetch(remote)
 
 			if not repo.bare:
-				repo.remote_set_head(remote)
+				try:
+					repo.remote_set_head(remote)
+					remote_has_head = True
+				except UnknownRevisionError:
+					remote_has_head = False
+
 				if rev and repo.valid_sha(rev):
 					#rev is a Commit ID
 					repo.checkout(rev)
 				else:
-					if rev:
-						remote_branch = Rev(repo, '%s/%s' % (remote, rev))
-						if not local_branch:
-							local_branch = rev
+					if rev or remote_has_head:
+						if rev:
+							remote_branch = Rev(repo, '%s/%s' % (remote, rev))
+							if not local_branch:
+								local_branch = rev
+						else:
+							remote_branch = Rev(repo, 'refs/remotes/%s/HEAD' % remote)
+							if not local_branch:
+								#remove refs/remotes/<origin>/ for the local version
+								local_branch = '/'.join(remote_branch.get_long_name().split('/')[3:])
+						#Strange things can happen here if local_branch is 'master', since git considers
+						#the repo to be on branch master, although it doesn't technically exist yet.
+						#'checkout -b' doesn't quite to know what to make of this situation, so we branch
+						#explicitly.  Also, checkout will try to merge local changes into the checkout
+						#(which will delete everything), so we force a clean checkout
+						local_branch = Rev.create(repo, local_branch, remote_branch)
+						repo.checkout(local_branch, force=True)
 					else:
-						remote_branch = Rev(repo, 'refs/remotes/%s/HEAD' % remote)
-						if not local_branch:
-							#remove refs/remotes/<origin>/ for the local version
-							local_branch = '/'.join(remote_branch.get_long_name().split('/')[3:])
-					#Strange things can happen here if local_branch is 'master', since git considers
-					#the repo to be on branch master, although it doesn't technically exist yet.
-					#'checkout -b' doesn't quite to know what to make of this situation, so we branch
-					#explicitly.  Also, checkout will try to merge local changes into the checkout
-					#(which will delete everything), so we force a clean checkout
-					local_branch = Rev.create(repo, local_branch, remote_branch)
-					repo.checkout(local_branch, force=True)
+						#Empty repo on the remote side - nothing else to do
+						pass
 
 			return repo
 
@@ -261,22 +270,24 @@ class Repo(object):
 		#We could run remote set-head -a, and parse the error output, but that would be error-prone
 		#and fragile
 		refs = self.ls_remote(remote)
-		#TODO: is it possible to have no HEAD?
-		head_sha = refs['HEAD']
-		matching_refs = [key[len('refs/heads')+1:] for (key, val) in refs.items() if (val == head_sha) and (key.startswith('refs/heads'))]
-		if 'master' in matching_refs:
-			head_ref = 'master'
+		if 'HEAD' in refs:
+			head_sha = refs['HEAD']
+			matching_refs = [key[len('refs/heads')+1:] for (key, val) in refs.items() if (val == head_sha) and (key.startswith('refs/heads'))]
+			if 'master' in matching_refs:
+				head_ref = 'master'
+			else:
+				#TODO: can there be no matching refs?
+				head_ref = matching_refs[0]
+			self.git_cmd(['remote', 'set-head', remote, head_ref])
 		else:
-			#TODO: can there be no matching refs?
-			head_ref = matching_refs[0]
-		self.git_cmd(['remote', 'set-head', remote, head_ref])
+			raise UnknownRevisionError('remote %s has no head' % remote)
 
 	def remote_set_url(self, remote, url):
 		self.git_cmd(['remote','set-url', remote, url])
 
 	def ls_remote(self, remote):
 		revs = self.git_func(['ls-remote', remote])
-		revs = map(lambda line:line.split(), revs.split('\n'))
+		revs = map(lambda line:line.split(), [a for a in revs.split('\n') if a])
 		ref_dict = {}
 		for (sha, ref) in revs:
 			ref_dict[ref] = sha
