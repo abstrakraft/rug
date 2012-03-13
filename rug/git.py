@@ -36,14 +36,13 @@ def shell_cmd(cmd, args, cwd=None, raise_errors=True):
 		return (ret, out, err)
 
 class Rev(object):
-	def __init__(self, repo_finder, name, unchecked=False):
-		repo = self.find_repo(repo_finder)
-		if (not unchecked) and (not repo.valid_rev(name)):
-			raise UnknownRevisionError('invalid rev %s' % name)
-
+	def __init__(self, repo_finder, name, checked=False):
 		self.repo_finder = repo_finder
-		self.repo = repo
+		self.repo = self.find_repo(repo_finder)
 		self.name = name
+
+		if (not checked) and (not self.is_empty_head()) and (not self.repo.valid_rev(name)):
+			raise UnknownRevisionError('invalid rev %s' % name)
 
 	@staticmethod
 	def find_repo(repo_finder):
@@ -52,8 +51,8 @@ class Rev(object):
 	@classmethod
 	def cast(cls, repo_finder, rev):
 		if isinstance(rev, Rev):
-			unchecked = (rev.repo.dir == cls.find_repo(repo_finder).dir)
-			return cls(repo_finder, rev.name, unchecked=unchecked)
+			checked = (rev.repo.dir == cls.find_repo(repo_finder).dir)
+			return cls(repo_finder, rev.name, checked=checked)
 		else:
 			return cls(repo_finder, rev)
 
@@ -68,25 +67,43 @@ class Rev(object):
 
 		return cls(repo_finder, dst)
 
+	def is_empty_head(self):
+		if (self.name == 'HEAD') and \
+				not os.path.exists(os.path.join(self.repo.git_dir, self.repo.symbolic_ref('HEAD'))):
+			return True
+		else:
+			return False
+
 	def is_sha(self):
 		if '_is_sha' not in self.__dict__:
 			self._is_sha = self.repo.valid_sha(self.name)
 		return self._is_sha
 
 	def get_sha(self):
-		return self.repo.rev_parse(self.name)
+		if not self.is_empty_head():
+			return self.repo.rev_parse(self.name)
+		else:
+			return '0'*40
 
 	def get_short_name(self):
 		if self.is_sha():
 			return self.name
-		else:
+		elif not self.is_empty_head():
 			return self.repo.rev_parse(self.name, abbrev_ref=True)
+		else:
+			head_dest = self.repo.symbolic_ref('HEAD')
+			if head_dest.startswith('refs/heads/'):
+				return head_dest[len('refs/heads/'):]
+			else:
+				return head_dest
 
 	def get_long_name(self):
 		if self.is_sha():
 			return self.get_sha()
-		else:
+		elif not self.is_empty_head():
 			return self.repo.rev_parse(self.name, full_name=True)
+		else:
+			return self.repo.symbolic_ref('HEAD')
 
 	def __cmp__(self, other):
 		return self.get_short_name() == self.get_short_name()
