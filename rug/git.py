@@ -68,7 +68,7 @@ class Rev(object):
 		return cls(repo_finder, dst)
 
 	def is_empty_head(self):
-		if (self.name == 'HEAD') and \
+		if (self.name == 'HEAD') and self.is_symbolic() and \
 				not os.path.exists(os.path.join(self.repo.git_dir, self.repo.symbolic_ref('HEAD'))):
 			return True
 		else:
@@ -78,6 +78,9 @@ class Rev(object):
 		if '_is_sha' not in self.__dict__:
 			self._is_sha = self.repo.valid_sha(self.name)
 		return self._is_sha
+
+	def is_symbolic(self):
+		return self.repo.is_symbolic_ref(self.name)
 
 	def get_sha(self):
 		if not self.is_empty_head():
@@ -517,3 +520,7 @@ class Repo(object):
 
 	def symbolic_ref_set(self, ref, dst):
 		self.git_cmd(['symbolic-ref', ref, dst])
+
+	def is_symbolic_ref(self, ref):
+		#TODO: check type - can't cast as this could result in infinite loop
+		return open(os.path.join(self.git_dir, ref)).read().startswith('ref:')
