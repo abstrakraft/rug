@@ -1,7 +1,11 @@
 import xml.dom.minidom
+import StringIO
 
-def read(filename, default_default=None, apply_default=True):
-	manifest = xml.dom.minidom.parse(filename)
+def read_from_string(s, default_default=None, apply_default=True):
+	return read(StringIO.StringIO(s), default_default, apply_default)
+
+def read(file_or_name, default_default=None, apply_default=True):
+	manifest = xml.dom.minidom.parse(file_or_name)
 	m = manifest.childNodes[0]
 	if m.localName != 'manifest':
 		raise RugError('malformed manifext.xml: no manifest element')

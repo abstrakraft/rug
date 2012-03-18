@@ -524,3 +524,11 @@ class Repo(object):
 	def is_symbolic_ref(self, ref):
 		#TODO: check type - can't cast as this could result in infinite loop
 		return open(os.path.join(self.git_dir, ref)).read().startswith('ref:')
+
+	def get_blob_id(self, file, rev=None):
+		if rev == None:
+			rev = 'HEAD'
+		return self.git_func(['ls-tree', Rev.cast(self, rev).get_short_name(), '--', file]).split()[2]
+
+	def show(self, sha):
+		return self.git_func(['show', sha])
