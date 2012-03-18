@@ -323,6 +323,11 @@ class Repo(object):
 		args = ['add']
 		args.extend(files)
 		self.git_cmd(args)
+		
+	def remove(self, *files):
+		args = ['rm']
+		args.extend(files)
+		self.git_cmd(args)
 
 	def commit(self, message, all=False):
 		args = ['commit']
