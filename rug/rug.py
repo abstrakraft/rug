@@ -38,8 +38,29 @@ def fetch(proj, optdict, repos=None):
 def update(proj, optdict):
 	proj.update(recursive=optdict.has_key('-r'))
 
+def status_recurse(project, project_status, level=0):
+	indent = '  '
+	output = []
+	for (path, (stat, child_stat)) in project_status.items():
+		r = project.repos[path]
+		output.append('%2s  %s%s%s' % (stat, indent*level, level and '\\' or '', path))
+		if r['vcs'] == 'rug':
+			#subproject
+			output += status_recurse(r['repo'].project, child_stat, level+1)
+		else:
+			#repo
+			for (file_path, s) in child_stat.items():
+				output.append('%2s  %s%s%s' % (s, indent*(level+1), level and '\\' or '', file_path))
+
+	return output
+
 def status(proj, optdict):
-	return proj.status(porcelain=optdict.has_key('-p'))
+	porcelain = optdict.has_key('-p')
+	if porcelain:
+		stat = proj.status(porcelain=True)
+		return '\n'.join(status_recurse(proj, stat))
+	else:
+		return proj.status(porcelain=False)
 
 def revset(proj, optdict, dst=None, src=None):
 	if dst is None:
@@ -93,8 +114,8 @@ def source_add(proj, optdict, source=None, url=None):
 
 #(function, pass project flag, options, long_options, return_stdout)
 rug_commands = {
-	'init': (init, False, '', ['--bare'], False),
-	'clone': (clone, False, 'b:o:c:', ['--bare'], False),
+	'init': (init, False, '', ['bare'], False),
+	'clone': (clone, False, 'b:o:c:', ['bare'], False),
 	'checkout': (checkout, True, 'b', [], False),
 	'fetch': (fetch, True, '', [], False),
 	'update': (update, True, 'r', [], False),

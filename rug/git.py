@@ -469,8 +469,11 @@ class Repo(object):
 		args = ['status']
 		if porcelain:
 			args.append('--porcelain')
-
-		return self.git_func(args)
+			stat = self.git_func(args)
+			lines = [s for s in stat.split('\n') if s]
+			return dict([(s[3:], s[:2]) for s in lines])
+		else:
+			return self.git_func(args)
 
 	def diff(self):
 		return self.git_func(['diff'])
