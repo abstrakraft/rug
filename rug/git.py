@@ -142,9 +142,14 @@ class Repo(object):
 			self.git_dir = os.path.join(self.dir, GIT_DIR)
 
 	@classmethod
-	def valid_repo(cls, repo):
+	def valid_repo(cls, repo, config=None):
 		try:
-			shell_cmd(GIT, ['ls-remote', repo])
+			args = []
+			if config is not None:
+				for (key,val) in config.items():
+					args.extend(['-c', '%s=%s' % (key,val)])
+			args.extend(['ls-remote', repo])
+			shell_cmd(GIT, args)
 		except GitError:
 			return False
 		else:

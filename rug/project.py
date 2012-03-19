@@ -156,7 +156,7 @@ class Project(object):
 		candidate_urls = [url, '%s/.rug/manifest' % url, '%s/manifest' % url]
 		clone_url = None
 		for cu in candidate_urls:
-			if git.Repo.valid_repo(cu):
+			if git.Repo.valid_repo(cu, config=repo_config):
 				clone_url = cu
 				break
 		if clone_url:
