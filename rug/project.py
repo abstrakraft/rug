@@ -393,7 +393,8 @@ class Project(object):
 						repo.remote_add(r['remote'], url)
 					else:
 						#Currently easier to just set the remote URL rather than check and set if different
-						repo.remote_set_url(r['remote'], url)
+						#repo.remote_set_url(r['remote'], url)
+						pass
 
 					#Fetch from remote
 					#TODO:decide if we should always do this here.  Sometimes have to, since we may not have
