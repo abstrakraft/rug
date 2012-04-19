@@ -479,8 +479,11 @@ class Repo(object):
 		args = ['status']
 		if porcelain:
 			args.append('--porcelain')
-
-		return self.git_func(args)
+			stat = self.git_func(args)
+			lines = [s for s in stat.split('\n') if s]
+			return dict([(s[3:], s[:2]) for s in lines])
+		else:
+			return self.git_func(args)
 
 	def diff(self):
 		return self.git_func(['diff'])
@@ -534,3 +537,11 @@ class Repo(object):
 	def is_symbolic_ref(self, ref):
 		#TODO: check type - can't cast as this could result in infinite loop
 		return open(os.path.join(self.git_dir, ref)).read().startswith('ref:')
+
+	def get_blob_id(self, file, rev=None):
+		if rev == None:
+			rev = 'HEAD'
+		return self.git_func(['ls-tree', Rev.cast(self, rev).get_short_name(), '--', file]).split()[2]
+
+	def show(self, sha):
+		return self.git_func(['show', sha])

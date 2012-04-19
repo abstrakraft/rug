@@ -265,7 +265,7 @@ class Project(object):
 		'delete a revset'
 		self.manifest_repo.branch_delete(dst, force)
 
-	def status(self, porcelain=True):
+	def status(self, porcelain=True, recursive=True):
 		#TODO: return objects or text?
 		#TODO: could add manifest status
 		if self.bare:
@@ -274,21 +274,17 @@ class Project(object):
 		#TODO: think through this
 
 		if porcelain:
-			stat = []
+			ret = {}
 			for r in self.repos.values():
-				repo = r['repo']
-				if repo:
-					r_stat = repo.status(porcelain=True)
-					if r_stat != '':
-						if r['path'] == '.':
-							prefix = ''
-						else:
-							prefix = r['path']
-							if prefix[-1] != os.path.sep:
-								prefix += os.path.sep
-						stat.extend(['%s\t%s\t%s' % (s[:2], prefix+s[3:], r['path']) for s in r_stat.split('\n')])
+				stat = self.repo_status(r['path'])
+				if recursive:
+					if stat == 'D':
+						ret[r['path']] = [stat, None]
+					else:
+						r_stat = r['repo'].status(porcelain=True)
+						ret[r['path']] = [stat, r_stat]
 				else:
-					stat.append(' D ' + r['path'])
+					ret[r['path']] = stat
 		else:
 			stat = ['On revset %s:' % self.revset().get_short_name()]
 			diff = self.manifest_repo.diff()
@@ -300,10 +296,11 @@ class Project(object):
 				if repo is None:
 					stat.append('repo %s missing' % r['path'])
 				else:
-					stat.append('repo %s (%s):' % (r['path'], self.repo_status(r)))
+					stat.append('repo %s (%s):' % (r['path'], self.repo_status(r['path'])))
 					stat.extend(map(lambda line: '\t' + line, r['repo'].status(porcelain=False).split('\n')))
+			ret = '\n'.join(stat)
 
-		return '\n'.join(stat)
+		return ret
 
 	def dirty(self):
 		#TODO: currently, "dirty" is defined as "would commit -a do anything"
@@ -312,38 +309,87 @@ class Project(object):
 			return True
 		else:
 			for r in self.repos.values():
-				if self.repo_status(r):
+				if self.repo_status(r['path']):
 					return True
 
-	def repo_status(self, r):
-		branches = self.get_branch_names(r)
-		repo = r['repo']
-		status = ''
-		if repo is None:
-			# deleted repo - Deleted
-			status += 'D'
-		else:
-			if repo.valid_rev(branches['rug_index']):
-				# added to index - Staged
-				status += 'S'
-			if repo.dirty():
-				# repo is dirty - Modified
-				status += 'M'
-			head = repo.head()
-			if repo.valid_sha(r['revision']):
-				#TODO: properly compare partial shas
-				if head.get_sha() != r['revision']:
-					#Revision changed names: Revision
-					status += 'R'
-			else:
-				if (head.get_short_name() != r['revision']):
-					#Revision changed names: Revision
-					status += 'R'
-				elif (head.get_sha() != repo.rev_class(repo, branches['rug']).get_sha()):
-					#Branch definition changed: Branch
-					status += 'B'
+	def repo_status(self, path):
+		#"Index" (manifest working tree) info
+		index_r = self.repos.get(path)
 
-		return status
+		#Committed revset info
+		manifest_blob_id = self.manifest_repo.get_blob_id('manifest.xml')
+		commit_repos = manifest.read_from_string(
+				self.manifest_repo.show(manifest_blob_id),
+				default_default=RUG_DEFAULT_DEFAULT
+			)[1]
+		commit_r = commit_repos.get(path)
+
+		#Working tree info
+		if index_r:
+			repo = index_r['repo']
+		elif committed_r:
+			abs_path = os.path.abspath(os.path.join(self.dir, path))
+			R = self.vcs_class[self.repos[path]['vcs']]
+			if R.valid_repo(abs_path):
+				repo = R(abs_path, output_buffer=self.output.spawn(path + ': '))
+			else:
+				#not in index, doesn't work in the tree (assume deleted), but is in the commit
+				return 'D '
+		elif os.path.exists(path):
+			#untracked - I think it should be ' A', but git would call it '??'
+			return '??'
+		else:
+			#doesn't exist in any form - how the #!@? did this even get called?
+			return '#!@?'
+
+		#Status1: commit..index diff
+		if not commit_r:
+			if index_r:
+				status1 = 'A'
+			else:
+				status1 = ' '
+		elif not index_r:
+			status1 = 'D'
+		elif commit_r['revision'] != index_r['revision']:
+			status1 = 'R'
+		else:
+			status1 = ' '
+
+		#Status2: index..working_tree diff
+		if not index_r:
+			if repo:
+				status2 = 'A'
+			else:
+				status2 = ' '
+		elif not repo:
+			status2 = 'D'
+		else:
+			branches = self.get_branch_names(index_r)
+			head = repo.head()
+			if repo.valid_sha(index_r['revision']):
+				#the revision in the manifest could be an abbreviation
+				if head.get_sha().startswith(index_r['revision']):
+					status2 = ' '
+				else:
+					#Revision changed names: Revision
+					status2 = 'R'
+			else:
+				if (head.get_short_name() != index_r['revision']):
+					#Revision changed names: Revision
+					status2 = 'R'
+				else:
+					if repo.valid_rev(branches['rug_index']):
+						index_branch = branches['rug_index']
+					else:
+						index_branch = branches['rug']
+					index_rev = repo.rev_class(repo, index_branch)
+					if head.get_sha() == index_rev.get_sha():
+						status2 = ' '
+					else:
+						#Branch definition changed: Branch
+						status2 = 'B'
+
+		return status1 + status2
 
 	def remote_list(self):
 		return self.remotes.keys()
@@ -683,7 +729,7 @@ class Project(object):
 							raise RugError('commit message required')
 						repo.commit(message, all=True)
 					#add if needed
-					status = self.repo_status(r)
+					status = self.repo_status(r['path'])
 					if ('B' in status) or ('R' in status):
 						self.add(r['path'])
 						r = self.repos[r['path']]
