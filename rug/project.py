@@ -21,6 +21,7 @@ RUG_SHA_RIDER = 'refs/rug/sha_rider'
 RUG_DEFAULT_DEFAULT = {'revision': 'master', 'vcs': 'git'}
 RUG_CONFIG = 'config'
 RUG_REPO_CONFIG_SECTION = 'repoconfig'
+RUG_CANDIDATE_TEMPLATES = ['%s', '%s/.rug/manifest', '%s/manifest']
 
 class Revset(git.Rev):
 	@staticmethod
@@ -153,7 +154,7 @@ class Project(object):
 		manifest_filename = os.path.join(manifest_dir, 'manifest.xml')
 
 		#clone manifest repo into rug directory
-		candidate_urls = [url, '%s/.rug/manifest' % url, '%s/manifest' % url]
+		candidate_urls = map(lambda c: c % url, RUG_CANDIDATE_TEMPLATES)
 		clone_url = None
 		for cu in candidate_urls:
 			if git.Repo.valid_repo(cu, config=repo_config):
@@ -392,8 +393,17 @@ class Project(object):
 					if r['remote'] not in repo.remote_list():
 						repo.remote_add(r['remote'], url)
 					else:
-						#Currently easier to just set the remote URL rather than check and set if different
-						repo.remote_set_url(r['remote'], url)
+						candidate_urls = map(lambda c: c % url, RUG_CANDIDATE_TEMPLATES)
+						if repo.config('remote.%s.url' % r['remote']) not in candidate_urls:
+							clone_url = None
+							for cu in candidate_urls:
+								if git.Repo.valid_repo(cu, config=repo_config):
+									clone_url = cu
+									break
+							if clone_url:
+								repo.remote_set_url(r['remote'], clone_url)
+							else:
+								raise RugError('%s does not seem to be a rug project' % url)
 
 					#Fetch from remote
 					#TODO:decide if we should always do this here.  Sometimes have to, since we may not have
