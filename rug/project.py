@@ -475,6 +475,59 @@ class Project(object):
 
 		self.output.append('revset %s checked out' % revset.get_short_name())
 
+	def merge_manifest(self, rev, message=None, merge_default=False, remotes=None, paths=None):
+		if remotes is None:
+			remotes = []
+		elif isinstance(remotes, basestring):
+			remotes = [remotes]
+
+		if paths is None:
+			paths = []
+		elif isinstance(paths, basestring):
+			paths = [paths]
+
+		(remotes, repos, default) = manifest.read(self.manifest_filename, apply_default=False)
+
+		rev_manifest_blob_id = self.manifest_repo.get_blob_id('manifest.xml', rev)
+		#If we're not merging defaults, we need to apply defaults, as differences in defaults
+		#can result in effective differences in the remote/path
+		#If we are merging defaults, this can't happen, so don't apply
+		if merge_default:
+			(rev_remotes, rev_repos, rev_default) = manifest.read_from_string(
+					self.manifest_repo.show(rev_manifest_blob_id),
+					apply_default=False
+				)
+			default.update(rev_default)
+		else:
+			(rev_remotes, rev_repos) = manifest.read_from_string(self.manifest_repo.show(rev_manifest_blob_id))
+
+		lookup_default = {}
+		lookup_default.update(RUG_DEFAULT_DEFAULT)
+		lookup_default.update(default)
+
+		for remote in remotes:
+			remotes[remote].update(rev_remotes[remote])
+
+		for path in paths:
+			r = repos[path]
+			r.update(rev_repos[path])
+			#TODO: refine this logic - there may be cases where a default is explicitly
+			#specified, and we may want to keep that specification.
+			for (k,v) in default.items():
+				if r[k] == v:
+					del r[k]
+
+		manifest.write(self.manifest_filename, remotes, repos, default)
+		if self.manifest_repo.dirty():
+			if message is None:
+				message = 'merged from %s' % rev
+			self.manifest_repo.commit(message, all=True)
+		else:
+			self.output.append('Nothing to merge')
+
+		#no need to read_manifest here - checkout will do this
+		self.checkout()
+
 	def create_repo(self, r, sub_repos):
 		if self.bare:
 			raise RugError('Invalid operation for bare project')

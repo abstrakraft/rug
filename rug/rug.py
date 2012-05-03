@@ -66,6 +66,8 @@ def revset(proj, optdict, dst=None, src=None):
 	if dst is None:
 		return proj.revset().get_short_name()
 	else:
+		#TODO: this control branch returns nothing, causing "None" to be printed to the console
+		#(src is None) is handled under the hood
 		proj.revset_create(dst, src)
 
 def revset_list(proj, optdict):
@@ -112,6 +114,20 @@ def source_list(proj, optdict):
 def source_add(proj, optdict, source=None, url=None):
 	proj.source_add(source, url)
 
+def merge_manifest(proj, optdict, *args):
+	message = optdict.get('-m')
+	merge_default = optdict.has_key('-d')
+	rev = args[0]
+	try:
+		idx = args.index('--')
+		paths = args[1:idx]
+		remotes = args[idx+1:]
+	except ValueError:
+		paths = args[1:]
+		remotes = []
+
+	proj.merge_manifest(rev, message, merge_default, remotes, paths)
+
 #(function, pass project flag, options, long_options, return_stdout)
 rug_commands = {
 	'init': (init, False, '', ['bare'], False),
@@ -130,6 +146,7 @@ rug_commands = {
 	'remote_add': (remote_add, True, '', [], False),
 	'source_list': (source_list, True, '', [], True),
 	'source_add': (source_add, True, '', [], False),
+	'merge_manifest': (merge_manifest, True, 'm:d', [], False),
 	#'reset': (Project.reset, True, ['soft', 'mixed', 'hard']),
 	}
 
