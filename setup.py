@@ -20,5 +20,6 @@ setup(
     entry_points="""
 [console_scripts]
 rug = rug.rug:main
+rugk = rug.rugk:main
 """,
 )

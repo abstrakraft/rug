@@ -4,6 +4,7 @@ import string
 import output
 
 GIT = 'git'
+GITK = 'gitk'
 GIT_DIR = '.git'
 
 class GitError(StandardError):
@@ -19,6 +20,9 @@ def shell_cmd(cmd, args, cwd=None, raise_errors=True):
 	'''shell_cmd(cmd, args, cwd=None, raise_errors=True) -> runs a shell command
 	raise_errors=True: returns stdout
 	raise_errors=False: returns (returncode, stdout, stderr)'''
+
+	if not isinstance(args, list):
+		args = list(args)
 
 	if cwd:
 		proc = subprocess.Popen([cmd]+args, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -263,6 +267,9 @@ class Repo(object):
 	def git_func(self, args, raise_errors=True):
 		'''git_func(args, raise_errors=True) -> shorthand for git_cmd(args, raise_errors, return_output=True)'''
 		return self.git_cmd(args, raise_errors, return_output=True)
+
+	def gitk(self, *args):
+		shell_cmd(GITK, args, cwd = self.dir)
 
 	def head(self):
 		return Rev(self, 'HEAD')
