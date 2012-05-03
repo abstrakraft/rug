@@ -439,17 +439,20 @@ class Project(object):
 					if r['remote'] not in repo.remote_list():
 						repo.remote_add(r['remote'], url)
 					else:
-						candidate_urls = map(lambda c: c % url, RUG_CANDIDATE_TEMPLATES)
-						if repo.config('remote.%s.url' % r['remote']) not in candidate_urls:
-							clone_url = None
-							for cu in candidate_urls:
-								if git.Repo.valid_repo(cu, config=repo_config):
-									clone_url = cu
-									break
-							if clone_url:
-								repo.remote_set_url(r['remote'], clone_url)
-							else:
-								raise RugError('%s does not seem to be a rug project' % url)
+						if r['vcs'] == 'rug':
+							candidate_urls = map(lambda c: c % url, RUG_CANDIDATE_TEMPLATES)
+							if repo.config('remote.%s.url' % r['remote']) not in candidate_urls:
+								clone_url = None
+								for cu in candidate_urls:
+									if git.Repo.valid_repo(cu, config=repo_config):
+										clone_url = cu
+										break
+								if clone_url:
+									repo.remote_set_url(r['remote'], clone_url)
+								else:
+									raise RugError('%s does not seem to be a rug project' % url)
+						else:
+							repo.remote_set_url(r['remote'], url)
 
 					#Fetch from remote
 					#TODO:decide if we should always do this here.  Sometimes have to, since we may not have
