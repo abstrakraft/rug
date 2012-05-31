@@ -44,6 +44,7 @@ class Rev(object):
 		self.repo_finder = repo_finder
 		self.repo = self.find_repo(repo_finder)
 		self.name = name
+		self._is_sha = None
 
 		if (not checked) and (not self.is_empty_head()) and (not self.repo.valid_rev(name)):
 			raise UnknownRevisionError('invalid rev %s' % name)
@@ -79,7 +80,7 @@ class Rev(object):
 			return False
 
 	def is_sha(self):
-		if '_is_sha' not in self.__dict__:
+		if self._is_sha is None:
 			self._is_sha = self.repo.valid_sha(self.name)
 		return self._is_sha
 
