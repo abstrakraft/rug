@@ -428,31 +428,12 @@ class Project(object):
 		if not self.bare:
 			sub_repos = hierarchy.hierarchy(self.repos.keys())
 			for r in self.repos.values():
-				url = self.remotes[r['remote']]['fetch'] + '/' + r['name']
-
 				#if the repo doesn't exist, clone it
 				repo = r['repo']
 				if not repo:
 					self.create_repo(r, sub_repos[r['path']])
 				else:
-					#Verify remotes
-					if r['remote'] not in repo.remote_list():
-						repo.remote_add(r['remote'], url)
-					else:
-						if r['vcs'] == 'rug':
-							candidate_urls = map(lambda c: c % url, RUG_CANDIDATE_TEMPLATES)
-							if repo.config('remote.%s.url' % r['remote']) not in candidate_urls:
-								clone_url = None
-								for cu in candidate_urls:
-									if git.Repo.valid_repo(cu, config=repo_config):
-										clone_url = cu
-										break
-								if clone_url:
-									repo.remote_set_url(r['remote'], clone_url)
-								else:
-									raise RugError('%s does not seem to be a rug project' % url)
-						else:
-							repo.remote_set_url(r['remote'], url)
+					self.verify_remote(r)
 
 					#Fetch from remote
 					#TODO:decide if we should always do this here.  Sometimes have to, since we may not have
@@ -478,7 +459,34 @@ class Project(object):
 
 		self.output.append('revset %s checked out' % revset.get_short_name())
 
-	def merge_manifest(self, rev, message=None, merge_default=False, remotes=None, paths=None):
+	def verify_remote(self, r, remotes = None):
+		if remotes is None:
+			remotes = self.remotes
+		repo = r['repo']
+		url = remotes[r['remote']]['fetch'] + '/' + r['name']
+
+		if r['remote'] not in repo.remote_list():
+			repo.remote_add(r['remote'], url)
+		else:
+			if r['vcs'] == 'rug':
+				candidate_urls = map(lambda c: c % url, RUG_CANDIDATE_TEMPLATES)
+				if repo.config('remote.%s.url' % r['remote']) not in candidate_urls:
+					clone_url = None
+					for cu in candidate_urls:
+						if git.Repo.valid_repo(cu, config=repo_config):
+							clone_url = cu
+							break
+					if clone_url:
+						repo.remote_set_url(r['remote'], clone_url)
+					else:
+						raise RugError('%s does not seem to be a rug project' % url)
+			else:
+				repo.remote_set_url(r['remote'], url)
+
+	def merge(self, revset, message=None, do_merge_default=False):
+		pass
+
+	def merge_manifest(self, revset, message=None, do_merge_default=False, remotes=None, paths=None):
 		if remotes is None:
 			remotes = []
 		elif isinstance(remotes, basestring):
@@ -489,47 +497,98 @@ class Project(object):
 		elif isinstance(paths, basestring):
 			paths = [paths]
 
-		(remotes, repos, default) = manifest.read(self.manifest_filename, apply_default=False)
+		(head_remotes, head_repos, head_default) = manifest.read(self.manifest_filename, apply_default=False)
 
-		rev_manifest_blob_id = self.manifest_repo.get_blob_id('manifest.xml', rev)
+		revset_manifest_blob_id = self.manifest_repo.get_blob_id('manifest.xml', rev)
 		#If we're not merging defaults, we need to apply defaults, as differences in defaults
 		#can result in effective differences in the remote/path
 		#If we are merging defaults, this can't happen, so don't apply
-		if merge_default:
-			(rev_remotes, rev_repos, rev_default) = manifest.read_from_string(
-					self.manifest_repo.show(rev_manifest_blob_id),
+		if do_merge_default:
+			(merge_remotes, merge_repos, merge_default) = manifest.read_from_string(
+					self.manifest_repo.show(revset_manifest_blob_id),
 					apply_default=False
 				)
-			default.update(rev_default)
+			head_default.update(merge_default)
 		else:
-			(rev_remotes, rev_repos) = manifest.read_from_string(self.manifest_repo.show(rev_manifest_blob_id))
+			(merge_remotes, merge_repos) = manifest.read_from_string(self.manifest_repo.show(revset_manifest_blob_id))
 
 		lookup_default = {}
 		lookup_default.update(RUG_DEFAULT_DEFAULT)
-		lookup_default.update(default)
+		lookup_default.update(head_default)
 
 		for remote in remotes:
-			remotes[remote].update(rev_remotes[remote])
+			if remote in head_remotes:
+				r = head_remotes[remote]
+			else:
+				r = {}
+				head_remotes[remote] = r
+			r.update(merge_remotes[remote])
 
 		for path in paths:
-			r = repos[path]
-			r.update(rev_repos[path])
+			if path in head_repos:
+				r = head_repos[path]
+			else:
+				r = {}
+				head_repos[path] = r
+			r.update(merge_repos[path])
 			#TODO: refine this logic - there may be cases where a default is explicitly
 			#specified, and we may want to keep that specification.
 			for (k,v) in default.items():
 				if r[k] == v:
 					del r[k]
 
-		manifest.write(self.manifest_filename, remotes, repos, default)
+		manifest.write(self.manifest_filename, head_remotes, head_repos, head_default)
 		if self.manifest_repo.dirty():
 			if message is None:
-				message = 'merged from %s' % rev
+				message = 'merged from %s' % revset
 			self.manifest_repo.commit(message, all=True)
 		else:
 			self.output.append('Nothing to merge')
 
 		#no need to read_manifest here - checkout will do this
 		self.checkout()
+
+	def merge_revision(self, revset, paths=None):
+		if self.bare:
+			raise RugError('Invalid operation for bare project')
+
+		if paths is None:
+			paths = []
+		elif isinstance(paths, basestring):
+			paths = [paths]
+
+		#(remotes, repos) = manifest.read(self.manifest_filename,
+		#		apply_default=True,
+		#		default_default=RUG_DEFAULT_DEFAULT)
+
+		revset_manifest_blob_id = self.manifest_repo.get_blob_id('manifest.xml', rev)
+		(merge_remotes, merge_repos) = manifest.read_from_string(
+				self.manifest_repo.show(revset_manifest_blob_id),
+				apply_default=True,
+				default_default=RUG_DEFAULT_DEFAULT)
+
+		for path in paths:
+			r = self.repos[path]
+			repo = r['repo']
+			merge_r = rev_repos[path]
+			#Verify and fetch the rev remote
+			self.verify_remote(merge_r, merge_remotes)
+			repo.fetch(merge_r['remote'])
+
+			#Figure out what the remote branch name is
+			#If the rev is a sha, it's just rev, if a branch name, it's remote/rev
+			rev_class = self.vcs_class[rev_r['vcs']].rev_class
+			try:
+				merge_rev = rev_class(repo, merge_r['rev'])
+				is_sha = merge_rev.is_sha()
+			except UnknownRevisionError:
+				is_sha = False
+			if not is_sha:
+				merge_rev = rev_class(repo, '%s/%s' % (merge_r['remote'], merge_r['rev']))
+
+			#Do the merge
+			#TODO: what to do on conflict!?
+			repo.merge(merge_rev)
 
 	def create_repo(self, r, sub_repos):
 		if self.bare:

@@ -116,7 +116,7 @@ def source_add(proj, optdict, source=None, url=None):
 
 def merge_manifest(proj, optdict, *args):
 	message = optdict.get('-m')
-	merge_default = optdict.has_key('-d')
+	do_merge_default = optdict.has_key('-d')
 	rev = args[0]
 	try:
 		idx = args.index('--')
@@ -126,7 +126,7 @@ def merge_manifest(proj, optdict, *args):
 		paths = args[1:]
 		remotes = []
 
-	proj.merge_manifest(rev, message, merge_default, remotes, paths)
+	proj.merge_manifest(rev, message, do_merge_default, remotes, paths)
 
 #(function, pass project flag, options, long_options, return_to_stdout)
 rug_commands = {
