@@ -128,7 +128,7 @@ def merge_manifest(proj, optdict, *args):
 
 	proj.merge_manifest(rev, message, merge_default, remotes, paths)
 
-#(function, pass project flag, options, long_options, return_stdout)
+#(function, pass project flag, options, long_options, return_to_stdout)
 rug_commands = {
 	'init': (init, False, '', ['bare'], False),
 	'clone': (clone, False, 'b:o:c:', ['bare'], False),
@@ -161,10 +161,10 @@ def main():
 		elif command not in rug_commands:
 			print 'rug usage'
 		else:
-			(func, pass_project, optspec, long_options, return_stdout) = rug_commands[command]
+			(func, pass_project, optspec, long_options, return_to_stdout) = rug_commands[command]
 			[optlist, args] = getopt.gnu_getopt(sys.argv[2:], optspec, long_options)
 			optdict = dict(optlist)
-			if return_stdout:
+			if return_to_stdout:
 				file = sys.stderr
 			else:
 				file = sys.stdout
@@ -174,7 +174,7 @@ def main():
 			else:
 				ret = func(output_buffer, optdict, *args)
 
-			if return_stdout:
+			if return_to_stdout:
 				print ret
 
 if __name__ == '__main__':
