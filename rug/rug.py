@@ -23,7 +23,7 @@ def clone(output_buffer, optdict, url=None, project_dir=None):
 		source=optdict.get('-o'),
 		revset=optdict.get('-b'),
 		bare=optdict.has_key('--bare'),
-	    repo_config=repo_config,
+		repo_config=repo_config,
 		output_buffer=output_buffer
 	)
 
@@ -38,14 +38,38 @@ def fetch(proj, optdict, repos=None):
 def update(proj, optdict):
 	proj.update(recursive=optdict.has_key('-r'))
 
+def status_recurse(project, project_status, level=0):
+	indent = '  '
+	output = []
+	for (path, (stat, child_stat)) in project_status.items():
+		r = project.repos[path]
+		output.append('%2s  %s%s%s' % (stat, indent*level, level and '\\' or '', path))
+		if r['vcs'] == 'rug':
+			#subproject
+			output += status_recurse(r['repo'].project, child_stat, level+1)
+		else:
+			#repo
+			for (file_path, s) in child_stat.items():
+				output.append('%2s  %s%s%s' % (s, indent*(level+1), level and '\\' or '', file_path))
+
+	return output
+
 def status(proj, optdict):
-	return proj.status(porcelain=optdict.has_key('-p'))
+	porcelain = optdict.has_key('-p')
+	if porcelain:
+		stat = proj.status(porcelain=True)
+		return '\n'.join(status_recurse(proj, stat))
+	else:
+		return proj.status(porcelain=False)
 
 def revset(proj, optdict, dst=None, src=None):
 	if dst is None:
 		return proj.revset().get_short_name()
 	else:
 		proj.revset_create(dst, src)
+
+def revset_list(proj, optdict):
+	return '\n'.join(map(lambda rs: rs.get_short_name(), proj.revset_list()))
 
 def add(proj, optdict, project_dir=None, name=None, remote=None, rev=None):
 	if not project_dir:
@@ -59,6 +83,16 @@ def add(proj, optdict, project_dir=None, name=None, remote=None, rev=None):
 	abs_path = os.path.abspath(project_dir)
 	path = os.path.relpath(abs_path, proj.dir)
 	proj.add(path=path, name=name, remote=remote, rev=rev, vcs=vcs, use_sha=use_sha)
+	
+def remove(proj, optdict, project_dir=None):
+	if not project_dir:
+		raise RugError('unspecified directory')
+
+	#Command-line interprets relative to cwd,
+	#but python interface is relative to project root
+	abs_path = os.path.abspath(project_dir)
+	path = os.path.relpath(abs_path, proj.dir)
+	proj.remove(path=path)
 
 def commit(proj, optdict):
 	proj.commit(message=optdict.get('-m'), all=optdict.has_key('-a'), recursive=optdict.has_key('-r'))
@@ -80,14 +114,16 @@ def source_add(proj, optdict, source=None, url=None):
 
 #(function, pass project flag, options, long_options, return_stdout)
 rug_commands = {
-	'init': (init, False, '', ['--bare'], False),
-	'clone': (clone, False, 'b:o:c:', ['--bare'], False),
+	'init': (init, False, '', ['bare'], False),
+	'clone': (clone, False, 'b:o:c:', ['bare'], False),
 	'checkout': (checkout, True, 'b', [], False),
 	'fetch': (fetch, True, '', [], False),
 	'update': (update, True, 'r', [], False),
 	'status': (status, True, 'p', [], True),
 	'revset': (revset, True, '', [], True),
+	'revset_list': (revset_list, True, '', [], True),
 	'add': (add, True, 'sv:', [], False),
+	'remove': (remove, True, '', [], False),
 	'commit': (commit, True, 'm:ar', [], False),
 	'publish': (publish, True, '', [], False),
 	'remote_list': (remote_list, True, '', [], True),

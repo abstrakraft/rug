@@ -34,6 +34,7 @@ class Repo(object):
 			'commit': p.commit,
 			'fetch': p.fetch,
 			'dirty': p.dirty,
+			'config': mr.config,
 			#'push': p.publish,
 			#'test_push': p.test_publish,
 			'merge': None, #TODO

@@ -4,6 +4,7 @@ import string
 import output
 
 GIT = 'git'
+GITK = 'gitk'
 GIT_DIR = '.git'
 
 class GitError(StandardError):
@@ -19,6 +20,9 @@ def shell_cmd(cmd, args, cwd=None, raise_errors=True):
 	'''shell_cmd(cmd, args, cwd=None, raise_errors=True) -> runs a shell command
 	raise_errors=True: returns stdout
 	raise_errors=False: returns (returncode, stdout, stderr)'''
+
+	if not isinstance(args, list):
+		args = list(args)
 
 	if cwd:
 		proc = subprocess.Popen([cmd]+args, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -36,14 +40,13 @@ def shell_cmd(cmd, args, cwd=None, raise_errors=True):
 		return (ret, out, err)
 
 class Rev(object):
-	def __init__(self, repo_finder, name, unchecked=False):
-		repo = self.find_repo(repo_finder)
-		if (not unchecked) and (not repo.valid_rev(name)):
-			raise UnknownRevisionError('invalid rev %s' % name)
-
+	def __init__(self, repo_finder, name, checked=False):
 		self.repo_finder = repo_finder
-		self.repo = repo
+		self.repo = self.find_repo(repo_finder)
 		self.name = name
+
+		if (not checked) and (not self.is_empty_head()) and (not self.repo.valid_rev(name)):
+			raise UnknownRevisionError('invalid rev %s' % name)
 
 	@staticmethod
 	def find_repo(repo_finder):
@@ -52,8 +55,8 @@ class Rev(object):
 	@classmethod
 	def cast(cls, repo_finder, rev):
 		if isinstance(rev, Rev):
-			unchecked = (rev.repo.dir == cls.find_repo(repo_finder).dir)
-			return cls(repo_finder, rev.name, unchecked=unchecked)
+			checked = (rev.repo.dir == cls.find_repo(repo_finder).dir)
+			return cls(repo_finder, rev.name, checked=checked)
 		else:
 			return cls(repo_finder, rev)
 
@@ -68,25 +71,46 @@ class Rev(object):
 
 		return cls(repo_finder, dst)
 
+	def is_empty_head(self):
+		if (self.name == 'HEAD') and self.is_symbolic() and \
+				not os.path.exists(os.path.join(self.repo.git_dir, self.repo.symbolic_ref('HEAD'))):
+			return True
+		else:
+			return False
+
 	def is_sha(self):
 		if '_is_sha' not in self.__dict__:
 			self._is_sha = self.repo.valid_sha(self.name)
 		return self._is_sha
 
+	def is_symbolic(self):
+		return self.repo.is_symbolic_ref(self.name)
+
 	def get_sha(self):
-		return self.repo.rev_parse(self.name)
+		if not self.is_empty_head():
+			return self.repo.rev_parse(self.name)
+		else:
+			return '0'*40
 
 	def get_short_name(self):
 		if self.is_sha():
 			return self.name
-		else:
+		elif not self.is_empty_head():
 			return self.repo.rev_parse(self.name, abbrev_ref=True)
+		else:
+			head_dest = self.repo.symbolic_ref('HEAD')
+			if head_dest.startswith('refs/heads/'):
+				return head_dest[len('refs/heads/'):]
+			else:
+				return head_dest
 
 	def get_long_name(self):
 		if self.is_sha():
 			return self.get_sha()
-		else:
+		elif not self.is_empty_head():
 			return self.repo.rev_parse(self.name, full_name=True)
+		else:
+			return self.repo.symbolic_ref('HEAD')
 
 	def __cmp__(self, other):
 		return self.get_short_name() == self.get_short_name()
@@ -122,9 +146,18 @@ class Repo(object):
 			self.git_dir = os.path.join(self.dir, GIT_DIR)
 
 	@classmethod
-	def valid_repo(cls, repo_dir):
-		return os.path.exists(os.path.join(repo_dir, GIT_DIR)) or \
-			(os.path.exists(repo_dir) and (shell_cmd(GIT, ['config', 'core.bare'], cwd=repo_dir, raise_errors=False)[1].lower() == 'true\n'))
+	def valid_repo(cls, repo, config=None):
+		try:
+			args = []
+			if config is not None:
+				for (key,val) in config.items():
+					args.extend(['-c', '%s=%s' % (key,val)])
+			args.extend(['ls-remote', repo])
+			shell_cmd(GIT, args)
+		except GitError:
+			return False
+		else:
+			return True
 
 	@classmethod
 	def init(cls, repo_dir=None, bare=None, output_buffer=None):
@@ -142,7 +175,7 @@ class Repo(object):
 			return cls(repo_dir, output_buffer=output_buffer)
 
 	@classmethod
-	def clone(cls, url, repo_dir=None, remote=None, rev=None, local_branch=None, config=None, output_buffer=None):
+	def clone(cls, url, repo_dir=None, remote=None, rev=None, local_branch=None, bare=None, config=None, output_buffer=None):
 		if output_buffer is None:
 			output_buffer = output.NullOutputBuffer()
 
@@ -156,6 +189,7 @@ class Repo(object):
 			args = ['clone', url]
 			if repo_dir:
 				args.append(repo_dir)
+			if bare: args.append('--bare')
 		
 			shell_cmd(GIT, args)
 			return cls(repo_dir, output_buffer=output_buffer)
@@ -164,41 +198,49 @@ class Repo(object):
 				if not os.path.exists(repo_dir):
 					os.makedirs(repo_dir)
 			else:
+				#TODO: this is probably a bad idea
 				repo_dir = os.getcwd()
 
-			repo = cls.init(repo_dir, output_buffer=output_buffer)
+			repo = cls.init(repo_dir, bare=bare, output_buffer=output_buffer)
 			if config is not None:
 				for (name, value) in config.items():
 					repo.config(name, value)
-			repo.remote_add(remote, url)
+			if bare:
+				repo.config('core.bare', 'true')
+			repo.remote_add(remote, url, mirror_fetch=repo.bare)
 			repo.fetch(remote)
-			#TODO: weirdness: Git can't actually tell what the HEAD of the remote is directly,
-			#just what it's SHA is.  Which means that if multiple remote branches are at the HEAD sha,
-			#git can't tell which is the actual HEAD.  'git remote set-head -a' errors in this case.
-			#Amazingly, 'git clone' just guesses, and may guess wrong.  This behavior is seriously broken.
-			#see guess_remote_host in git/remote.c
-			repo.remote_set_head(remote)
 
-			if rev and repo.valid_sha(rev):
-				#rev is a Commit ID
-				repo.checkout(rev)
-			else:
-				if rev:
-					remote_branch = Rev(repo, '%s/%s' % (remote, rev))
-					if not local_branch:
-						local_branch = rev
+			if not repo.bare:
+				try:
+					repo.remote_set_head(remote)
+					remote_has_head = True
+				except UnknownRevisionError:
+					remote_has_head = False
+
+				if rev and repo.valid_sha(rev):
+					#rev is a Commit ID
+					repo.checkout(rev)
 				else:
-					remote_branch = Rev(repo, 'refs/remotes/%s/HEAD' % remote)
-					if not local_branch:
-						#remove refs/remotes/<origin>/ for the local version
-						local_branch = '/'.join(remote_branch.get_long_name().split('/')[3:])
-				#Strange things can happen here if local_branch is 'master', since git considers
-				#the repo to be on branch master, although it doesn't technically exist yet.
-				#'checkout -b' doesn't quite to know what to make of this situation, so we branch
-				#explicitly.  Also, checkout will try to merge local changes into the checkout
-				#(which will delete everything), so we force a clean checkout
-				local_branch = Rev.create(repo, local_branch, remote_branch)
-				repo.checkout(local_branch, force=True)
+					if rev or remote_has_head:
+						if rev:
+							remote_branch = Rev(repo, '%s/%s' % (remote, rev))
+							if not local_branch:
+								local_branch = rev
+						else:
+							remote_branch = Rev(repo, 'refs/remotes/%s/HEAD' % remote)
+							if not local_branch:
+								#remove refs/remotes/<origin>/ for the local version
+								local_branch = '/'.join(remote_branch.get_long_name().split('/')[3:])
+						#Strange things can happen here if local_branch is 'master', since git considers
+						#the repo to be on branch master, although it doesn't technically exist yet.
+						#'checkout -b' doesn't quite to know what to make of this situation, so we branch
+						#explicitly.  Also, checkout will try to merge local changes into the checkout
+						#(which will delete everything), so we force a clean checkout
+						local_branch = Rev.create(repo, local_branch, remote_branch)
+						repo.checkout(local_branch, force=True)
+					else:
+						#Empty repo on the remote side - nothing else to do
+						pass
 
 			return repo
 
@@ -226,6 +268,9 @@ class Repo(object):
 		'''git_func(args, raise_errors=True) -> shorthand for git_cmd(args, raise_errors, return_output=True)'''
 		return self.git_cmd(args, raise_errors, return_output=True)
 
+	def gitk(self, *args):
+		shell_cmd(GITK, args, cwd = self.dir)
+
 	def head(self):
 		return Rev(self, 'HEAD')
 
@@ -240,18 +285,45 @@ class Repo(object):
 	def remote_list(self):
 		return self.git_func(['remote', 'show']).split()
 
-	def remote_add(self, remote, url):
-		self.git_cmd(['remote','add', remote, url])
+	def remote_add(self, remote, url, mirror_fetch=None):
+		args = ['remote','add', remote, url]
+		if mirror_fetch:
+			args.append('--mirror=fetch')
+		self.git_cmd(args)
 
-	def remote_set_head(self, remote, suppress_output=True):
-		if suppress_output:
-			f = self.git_func
+	def remote_set_head(self, remote):
+		#weirdness: Git can't actually tell what the HEAD of the remote is directly,
+		#just what it's SHA is.  Which means that if multiple remote branches are at the HEAD sha,
+		#git can't tell which is the actual HEAD.  'git remote set-head -a' errors in this case.
+		#Amazingly, 'git clone' just guesses, and may guess wrong.  This behavior is seriously broken.
+		#see guess_remote_host in git/remote.c
+
+		#Error free version (mimics guess_remote_host)
+		#We could run remote set-head -a, and parse the error output, but that would be error-prone
+		#and fragile
+		refs = self.ls_remote(remote)
+		if 'HEAD' in refs:
+			head_sha = refs['HEAD']
+			matching_refs = [key[len('refs/heads')+1:] for (key, val) in refs.items() if (val == head_sha) and (key.startswith('refs/heads'))]
+			if 'master' in matching_refs:
+				head_ref = 'master'
+			else:
+				#TODO: can there be no matching refs?
+				head_ref = matching_refs[0]
+			self.git_cmd(['remote', 'set-head', remote, head_ref])
 		else:
-			f = self.git_cmd
-		f(['remote', 'set-head', remote, '-a'])
+			raise UnknownRevisionError('remote %s has no head' % remote)
 
 	def remote_set_url(self, remote, url):
 		self.git_cmd(['remote','set-url', remote, url])
+
+	def ls_remote(self, remote):
+		revs = self.git_func(['ls-remote', remote])
+		revs = map(lambda line:line.split(), [a for a in revs.split('\n') if a])
+		ref_dict = {}
+		for (sha, ref) in revs:
+			ref_dict[ref] = sha
+		return ref_dict
 
 	def fetch(self, remote=None):
 		args = ['fetch', '-v']
@@ -261,6 +333,11 @@ class Repo(object):
 
 	def add(self, *files):
 		args = ['add']
+		args.extend(files)
+		self.git_cmd(args)
+		
+	def remove(self, *files):
+		args = ['rm']
 		args.extend(files)
 		self.git_cmd(args)
 
@@ -308,7 +385,7 @@ class Repo(object):
 
 	def ref_list(self):
 		args = ['show-ref']
-		return map(Rev, [r.split()[1][5:] for r in self.git_func(args).split('\n')])
+		return map(lambda r: Rev(self, r), [r.split()[1][5:] for r in self.git_func(args).split('\n')])
 
 	def branch_create(self, dst, src=None, force=False):
 		args = ['branch']
@@ -344,11 +421,11 @@ class Repo(object):
 	def reset(self, branch, mode=None):
 		args = ['reset']
 		if mode is not None:
-			if mode == 0:
+			if mode == self.SOFT:
 				args.append('--soft')
-			elif mode == 1:
+			elif mode == self.MIXED:
 				args.append('--mixed')
-			elif mode == 2:
+			elif mode == self.HARD:
 				args.append('--hard')
 			else:
 				#TODO: error
@@ -409,8 +486,11 @@ class Repo(object):
 		args = ['status']
 		if porcelain:
 			args.append('--porcelain')
-
-		return self.git_func(args)
+			stat = self.git_func(args)
+			lines = [s for s in stat.split('\n') if s]
+			return dict([(s[3:], s[:2]) for s in lines])
+		else:
+			return self.git_func(args)
 
 	def diff(self):
 		return self.git_func(['diff'])
@@ -457,3 +537,18 @@ class Repo(object):
 
 	def symbolic_ref(self, ref):
 		return self.git_func(['symbolic-ref', ref])
+
+	def symbolic_ref_set(self, ref, dst):
+		self.git_cmd(['symbolic-ref', ref, dst])
+
+	def is_symbolic_ref(self, ref):
+		#TODO: check type - can't cast as this could result in infinite loop
+		return open(os.path.join(self.git_dir, ref)).read().startswith('ref:')
+
+	def get_blob_id(self, file, rev=None):
+		if rev == None:
+			rev = 'HEAD'
+		return self.git_func(['ls-tree', Rev.cast(self, rev).get_short_name(), '--', file]).split()[2]
+
+	def show(self, sha):
+		return self.git_func(['show', sha])
