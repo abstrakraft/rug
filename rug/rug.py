@@ -114,6 +114,9 @@ def source_list(proj, optdict):
 def source_add(proj, optdict, source=None, url=None):
 	proj.source_add(source, url)
 
+def bind(proj, optdict):
+	proj.bind(message=optdict.get('-m'), recursive=not optdict.has_key('-n'))
+
 def merge_manifest(proj, optdict, *args):
 	message = optdict.get('-m')
 	do_merge_default = optdict.has_key('-d')
@@ -146,6 +149,7 @@ rug_commands = {
 	'remote_add': (remote_add, True, '', [], False),
 	'source_list': (source_list, True, '', [], True),
 	'source_add': (source_add, True, '', [], False),
+	'bind': (bind, True, 'm:n', [], False),
 	'merge_manifest': (merge_manifest, True, 'm:d', [], False),
 	#'reset': (Project.reset, True, ['soft', 'mixed', 'hard']),
 	}

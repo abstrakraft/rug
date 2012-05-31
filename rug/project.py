@@ -250,6 +250,7 @@ class Project(object):
 
 	def revset(self):
 		'return the current revset'
+		#TODO: currently returns "HEAD" for detached heads
 		return Revset.cast(self, self.manifest_repo.head())
 
 	def revset_list(self):
@@ -813,10 +814,20 @@ class Project(object):
 
 		self.output.append("%s added to manifest" % path)
 
+	def bind(self, message=None, recursive=True):
+		for r in self.repos.values():
+			repo = r['repo']
+			if recursive and r['vcs'] == 'rug':
+				repo.bind(message=message, recursive=recursive)
+			self.add(r['path'], use_sha=True)
+		self.commit(message=message)
+
+		#adding sub-repos with use_sha=True doesn't actually change the HEAD.  checkout will do that
+		#TODO: this may not be the right place for this.  Should it happen in add or commit?
+		self.checkout()
+
 	def remove(self, path):
-		"""
-		Remove a repo from the manifest
-		"""
+		'''Remove a repo from the manifest'''
 
 		(remotes, repos, default) = manifest.read(self.manifest_filename, apply_default=False)
 		lookup_default = {}
