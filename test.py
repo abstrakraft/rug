@@ -13,7 +13,7 @@ class GtriUnitTestFunctions(unittest.TestCase):
 		self.assertEqual(repo.rev_parse('remotes/origin/master'), repo2.rev_parse('master'))
 
 	#test_revCheck is designed to check that the Rev command works correctly by checking that using the different avialable methods will generate the SHA's correctly    
-   	def test_revCheck(self):
+	def test_revCheck(self):
 		rev_repo=rug.git.Repo("cloned_repo2")
 		rev_head=rev_repo.head()
 		self.assertEqual(rug.git.Rev(rev_repo, rev_head.get_short_name()).get_sha(), rev_head.get_sha())
