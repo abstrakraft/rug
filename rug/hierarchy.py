@@ -1,42 +1,49 @@
 import os
 import sys
 
-#info: (path (if any), parent, subdirectories, subdirectory info lists)
-def dfs(info):
+def dfs(info, path):
 	ret = []
-	for c in info[3]:
+	for (d, c) in info[1].items():
+		recurse_path = os.path.join(path, d)
 		if c[0]:
-			ret.append(c[0])
+			ret.append(recurse_path)
 		else:
-			ret.extend(dfs(c))
+			ret.extend(dfs(c, recurse_path))
 	return ret
 
-def hierarchy(paths):
+def hierarchy(paths, fullpath=True):
 	#TODO: properly handle ..
 	path_split = map(lambda x:[s for s in x.split(os.path.sep) if s not in ['','.']], paths)
 
-	root = [None, None, [], []]
-	path_leaves = []
+	#Trie/prefix tree approach
+	#nodes are [path string for populated nodes, subdirectory dictionary (relpath->subnode)]
+	#populated nodes correspond to populated paths.  since repos can be nested, this isn't the same
+	#as leaves
+	root = [None, {}]
+	path_nodes = []
 
 	for idx in range(len(paths)):
 		cursor = root
 		for d in path_split[idx]:
-			try:
-				cursor = cursor[3][cursor[2].index(d)]
-			except ValueError:
-				cursor[2].append(d)
-				new_cursor = [None, cursor, [], []]
-				cursor[3].append(new_cursor)
-				cursor = new_cursor
+			prev_cursor = cursor
+			if d in prev_cursor[1]:
+				cursor = prev_cursor[1][d]
+			else:
+				cursor = [None, {}]
+				prev_cursor[1][d] = cursor
 		if cursor[0] is not None:
 			raise ValueError('Duplicate paths: "%s" and "%s"' % (cursor[0], paths[idx]))
 		else:
 			cursor[0] = paths[idx]
-			path_leaves.append(cursor)
+			path_nodes.append(cursor)
 
 	path_dict = {}
 	for idx in range(len(paths)):
-		path_dict[paths[idx]] = dfs(path_leaves[idx])
+		if fullpath and paths[idx] != '.':
+			init_path = paths[idx]
+		else:
+			init_path = ''
+		path_dict[paths[idx]] = dfs(path_nodes[idx], init_path)
 
 	return path_dict
 
