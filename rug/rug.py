@@ -44,9 +44,9 @@ def status_recurse(project, project_status, level=0):
 	for (path, (stat, child_stat)) in project_status.items():
 		r = project.repos[path]
 		output.append('%2s  %s%s%s' % (stat, indent*level, level and '\\' or '', path))
-		if r['vcs'] == 'rug':
+		if r.vcs == 'rug':
 			#subproject
-			output += status_recurse(r['repo'].project, child_stat, level+1)
+			output += status_recurse(r.repo.project, child_stat, level+1)
 		else:
 			#repo
 			for (file_path, s) in child_stat.items():
@@ -99,8 +99,9 @@ def remove(proj, optdict, project_dir=None):
 def commit(proj, optdict):
 	proj.commit(message=optdict.get('-m'), all=optdict.has_key('-a'), recursive=optdict.has_key('-r'))
 
-def publish(proj, optdict, source=None):
-	proj.publish(source)
+def push(proj, optdict, source=None):
+	if proj.push(source, test=True):
+		proj.push(source)
 
 def remote_list(proj, optdict):
 	return '\n'.join(proj.remote_list())
@@ -144,7 +145,7 @@ rug_commands = {
 	'add': (add, True, 'sv:', [], False),
 	'remove': (remove, True, '', [], False),
 	'commit': (commit, True, 'm:ar', [], False),
-	'publish': (publish, True, '', [], False),
+	'push': (push, True, '', [], False),
 	'remote_list': (remote_list, True, '', [], True),
 	'remote_add': (remote_add, True, '', [], False),
 	'source_list': (source_list, True, '', [], True),

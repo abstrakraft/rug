@@ -349,9 +349,10 @@ class Repo(object):
 
 		self.git_cmd(args)
 
-	def push(self, remote=None, refspec=None, force=False):
+	def push(self, remote=None, refspec=None, force=False, test=False):
 		args = ['push']
 		if force: args.append('-f')
+		if test: args.append('-n')
 		if remote: args.append(remote)
 		if refspec:
 			#refspec may be %s:%s rather than just a branch name, so can't cast
@@ -360,21 +361,11 @@ class Repo(object):
 			else:
 				args.append(refspec)
 
-		self.git_cmd(args)
-
-	def test_push(self, remote=None, refspec=None, force=False):
-		args = ['push', '-n']
-		if force: args.append('-f')
-		if remote: args.append(remote)
-		if refspec:
-			#refspec may be %s:%s rather than just a branch name, so can't cast
-			if isinstance(refspec, Rev):
-				args.append(refspec.get_short_name())
-			else:
-				args.append(refspec)
-
-		(ret, out, err) = self.git_func(args, raise_errors=False)
-		return not ret
+		if test:
+			(ret, out, err) = self.git_func(args, raise_errors=False)
+			return not ret
+		else:
+			self.git_cmd(args)
 
 	#TODO: doesn't work
 	#def branch_list(self, all=False):

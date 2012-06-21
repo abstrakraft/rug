@@ -32,9 +32,9 @@ adds repos to "index" = working copy of manifest
 
 	rug add
 
-publish changes to project
+pushes changes to project
 
-	rug publish
+	rug push
 
 ### Clone Project ###
 
@@ -62,7 +62,7 @@ update local manifest file
 
 commit local manifest file, push all repo branches and manifest branch
 
-	rug publish
+	rug push
 
 ## Porcelain Commands ##
 - `init` create a new rug project
@@ -71,7 +71,7 @@ commit local manifest file, push all repo branches and manifest branch
 - `checkout` checkout another revset.
 - `revset` create a new revset
 - `add` add a repos branch or commit to the local manifest file
-- `publish` push repo changes to servers (commit (manifest) followed by repo-push and manifest-push)
+- `push` push repo changes to servers (commit (manifest) followed by repo-push and manifest-push)
 - `status` print status of all repos (--deep option for internal status)
 - `fetch` fetch all repos
 - `commit` commit everything necessary to checkout another revset, then check out the current one again, and get the same "stuff"
@@ -87,7 +87,7 @@ For each revset, and in each repo, the following branches exist:
 
 - `live` The name of the branch that should be checked out.  Note that this is really just a branch name - what that name happens to point to doesn't mean anything.
 - `rug` Tracks the revset's local branch across checkouts.  This branch points to the sha that should become the live branch when the revset in question is checked out.
-- `rug_index` Tracks the version of the revset's local branch that should be committed/published between checkouts.
+- `rug_index` Tracks the version of the revset's local branch that should be committed/pushed between checkouts.
 - `bookmark` Tracks the remote branch as of the last commit.  Used to rebase changes on update if there is no bookmark_index.
 - `bookmark_index` Tracks the remote branch as of the last update.  Used to rebase changes on update, if it exists.  This branch is used so that bookmark is unaltered until the revset is committed.
 
@@ -110,7 +110,7 @@ A message should be printed indicating the last time the revset was fetched from
 - 'update' attempts to apply changes made to the rug branches to the current remote branch.  The bookmark and bookmark_index branches are used to determine the original remote branch that changes were made against in the event of remote branches that are not descendants of previous versions of themselves.
 - 'add' "stages" changes made to repositories in something conceptually resembling an index. Changes to the name of a revision (sha or branch name) are recorded in the (uncommitted) manifest, and changes to the identity of the revision are recorded in the rug_index branch.
 - 'commit' records all changes that have been added. This involves committing the manifest, and if {rug,bookmark}_index exist, setting {rug,bookmark} to {rug,bookmark}_index and deleting {rug,bookmark}_index.
-- 'publish' pushes all committed changes.  This involves pushing the manifest, as well as all repos whose revisions have changed name or identity. All repos are tested for push-ability before any are actually pushed to avoid inconsistent state.
+- 'push' pushes all committed changes.  This involves pushing the manifest, as well as all repos whose revisions have changed name or identity. All repos are tested for push-ability before any are actually pushed to avoid inconsistent state.
 
 ## Philosophy ##
 Obviously, given the original name (gitri), rug is meant to mimic git in some sense.  However, there are fundamental differences between managing "projects" and "repositories."

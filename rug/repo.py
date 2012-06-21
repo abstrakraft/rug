@@ -36,8 +36,6 @@ class Repo(object):
 			'dirty': p.dirty,
 			'config': mr.config,
 			'bind': p.bind,
-			#'push': p.publish,
-			#'test_push': p.test_publish,
 			'merge': None, #TODO
 			'rebase': None, #TODO
 		}
@@ -61,17 +59,11 @@ class Repo(object):
 	def add_ignore(self, pattern):
 		raise NotImplemented('ignoring through rug repos not implemented')
 
-	def push(self, remote, branch, force):
+	def push(self, remote, branch, force, test=False):
 		#TODO: this is a hack to drop the branch and force args, because rug repos don't handle them. Fix
-		return self.project.publish(remote)
-
-	def test_push(self, remote, branch, force):
-		#TODO: this is a hack to drop the branch and force args, because rug repos don't handle them. Fix
-		return self.project.test_publish(remote)
+		return self.project.push(remote)
 
 	def update(self, recursive=False):
 		if self.project.dirty():
 			self.project.checkout()
 		self.project.update(recursive)
-
-project.Project.register_vcs('rug', Repo)
