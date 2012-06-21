@@ -4,7 +4,7 @@ class Writer(object):
 
 class StringWriter(Writer):
 	def __init__(self):
-		super(Writer, self).__init__()
+		super(StringWriter, self).__init__()
 		self.string = ''
 
 	def write(self, str):
@@ -15,7 +15,7 @@ class StringWriter(Writer):
 
 class FileWriter(Writer):
 	def __init__(self, file):
-		super(Writer, self).__init__()
+		super(FileWriter, self).__init__()
 		self.file = file
 
 	def write(self, str):
