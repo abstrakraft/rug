@@ -49,7 +49,5 @@ class ProjectCloneTestCase(unittest.TestCase):
 		'''test_clone - test rug.Project.clone with vanilla arguments'''
 		repo = rug.Project.clone(test_url, test_repo)
 
-suite = unittest.TestSuite()
-for case in [GitCloneTestCase, GitRevTestCase, ProjectCloneTestCase]:
-	suite.addTest(unittest.defaultTestLoader.loadTestsFromTestCase(case))
-unittest.TextTestRunner(verbosity=2).run(suite)
+if __name__ == '__main__':
+	unittest.main(verbosity=2)
