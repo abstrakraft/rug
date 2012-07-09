@@ -42,7 +42,7 @@ def status_recurse(project, project_status, level=0):
 	indent = '  '
 	output = []
 	for (path, (stat, child_stat)) in project_status.items():
-		r = project.repos[path]
+		r = project.wrappers[path]
 		output.append('%2s  %s%s%s' % (stat, indent*level, level and '\\' or '', path))
 		if r.vcs == 'rug':
 			#subproject

@@ -23,7 +23,7 @@ class Wrapper(object):
 			if R.valid_repo(abs_path):
 				self.repo = R(abs_path, self.output)
 			else:
-				self.repos = None
+				self.repo = None
 
 	@classmethod
 	def register_vcs(cls, vcs, vcs_class):
@@ -51,7 +51,7 @@ class Wrapper(object):
 			ret['rug_index'] = 'refs/rug/rug_index'
 			ret['bookmark'] = 'refs/rug/bookmarks/%s/%s/%s' % (self.parent.revset().get_short_name(), self.remote, revision)
 			ret['bookmark_index'] = 'refs/rug/bookmark_index'
-			ret['remote'] = '%s/%s' % (r['remote'], revision)
+			ret['remote'] = '%s/%s' % (self.remote, revision)
 
 		return ret
 
@@ -81,7 +81,7 @@ class Wrapper(object):
 					#Revision changed names: Revision
 					status2 = 'R'
 			else:
-				if (head.get_short_name() != index.revision):
+				if (head.get_short_name() != self.revision):
 					#Revision changed names: Revision
 					status2 = 'R'
 				else:
@@ -115,21 +115,22 @@ class Wrapper(object):
 		if self.parent.bare:
 			raise RugError('Invalid operation for bare project')
 
-		abs_path = os.path.abspath(os.path.join(self.parent.dir, r.path))
-		url = self.parent.remotes[r.remote]['fetch'] + '/' + r.name
-		R = self.vcs_class[r.vcs]
+		abs_path = os.path.abspath(os.path.join(self.parent.dir, self.path))
+		url = self.parent.remotes[self.remote]['fetch'] + '/' + self.name
+		R = self.vcs_class[self.vcs]
 
 		config = self.parent.get_rug_config()
-		repo = R.clone(url, repo_dir=abs_path, remote=self.remote, rev=self.revision, config=config, output_buffer=self.output.spawn(self.path + ': '))
+		repo = R.clone(url, repo_dir=abs_path, remote=self.remote, rev=self.revision, config=config, output_buffer=self.output)
 		if self.path == '.':
 			repo.add_ignore(RUG_DIR)
 			cmp_path = ''
 		else:
 			cmp_path = self.path
-		relevant_paths = [p for p in self.parent.repos if len(p) > len(cmp_path) and p.startswith(cmp_path)]
-		sub_repos = hierarchy.hierarchy(relevant_paths, fullpath=False)[self.path]
-		for sr in sub_repos:
-			repo.add_ignore(sr)
+		relevant_paths = [p for p in self.parent.wrappers if len(p) > len(cmp_path) and p.startswith(cmp_path)]
+		if relevant_paths:
+			sub_repos = hierarchy.hierarchy(relevant_paths, fullpath=False)[self.path]
+			for sr in sub_repos:
+				repo.add_ignore(sr)
 		self.repo = repo
 		branches = self.get_branch_names()
 		for b in ['live_plumbing', 'rug', 'bookmark']:
@@ -142,7 +143,7 @@ class Wrapper(object):
 		if not self.repo:
 			self.create_repo()
 		else:
-			self.verify_remote(r)
+			self.verify_remote()
 
 			#Fetch from remote
 			#TODO:decide if we should always do this here.  Sometimes have to, since we may not have
@@ -168,13 +169,13 @@ class Wrapper(object):
 
 	def verify_remote(self, remotes = None):
 		if remotes is None:
-			remotes = self.parent, remotes
-		url = remotes[self.remote]]['fetch'] + '/' + self.name
+			remotes = self.parent.remotes
+		url = remotes[self.remote]['fetch'] + '/' + self.name
 
 		if self.remote not in self.repo.remote_list():
 			self.repo.remote_add(self.remote, url)
 		else:
-			if r.vcs == 'rug':
+			if self.vcs == 'rug':
 				candidate_urls = map(lambda c: c % url, RUG_CANDIDATE_TEMPLATES)
 				if self.repo.config('remote.%s.url' % self.remote) not in candidate_urls:
 					clone_url = None
@@ -205,7 +206,7 @@ class Wrapper(object):
 		else:
 			self.repo.commit(message=message, all=all)
 
-	def should_push(self)
+	def should_push(self):
 		branches = self.get_branch_names()
 		if not self.repo.valid_rev(branches['remote']):
 			return True
