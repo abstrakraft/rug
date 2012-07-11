@@ -3,7 +3,7 @@ import unittest
 import os
 import shutil
 
-test_url = 'git://github.com/abstrakraft/rug-test-project'
+test_url = 'git@github.com:abstrakraft/rug-test-project'
 test_repo = 'test_repo'
 
 class GitCloneTestCase(unittest.TestCase):
@@ -50,4 +50,4 @@ class ProjectCloneTestCase(unittest.TestCase):
 		repo = rug.Project.clone(test_url, test_repo)
 
 if __name__ == '__main__':
-	unittest.main(verbosity=2)
+	unittest.main()
