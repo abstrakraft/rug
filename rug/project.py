@@ -392,7 +392,7 @@ class Project(object):
 				default_default=RUG_DEFAULT_DEFAULT)
 
 		for path in paths:
-			r = self.repos[path]
+			r = self.wrappers[path]
 			repo = r['repo']
 			merge_r = rev_repos[path]
 			#Verify and fetch the rev remote
@@ -421,16 +421,16 @@ class Project(object):
 			if paths is None:
 				paths = self.wrappers.keys()
 
-			for r in [self.repos[p] for p in paths]:
+			for r in [self.wrappers[p] for p in paths]:
 				r.fetch()
 
 		#TODO:output
 
 	def update(self, recursive=False):
 		#TODO: implement per repo update
-		repos = self.repos.values()
+		repos = self.wrappers.values()
 		#if repos is None:
-		#	repos = self.repos.values()
+		#	repos = self.wrappers.values()
 		#else:
 		#	#TODO: turn list of strings into repos
 		#	pass
@@ -440,7 +440,7 @@ class Project(object):
 
 		#TODO:update manifest?
 
-		sub_repos = hierarchy.hierarchy(self.repos.keys())
+		sub_repos = hierarchy.hierarchy(self.wrappers.keys())
 		for r in repos:
 			repo = r['repo']
 			if repo:
@@ -505,113 +505,85 @@ class Project(object):
 
 	def add(self, path, name=None, remote=None, rev=None, vcs=None, use_sha=None):
 		#TODO:handle lists of dirs
+
+		#Gather up all properties.  Precedence, in increasing order is:
+		# 1) Manifest (if repo exists there)
+		# 2) Repo state (if it exists)
+		# 3) arguments
+
+		properties = {}
+
+		# 1) Manifest
+		# Keep defaults separate so we can avoid specifying them later
 		(remotes, repos, default) = manifest.read(self.manifest_filename, apply_default=False)
-		lookup_default = {}
-		lookup_default.update(RUG_DEFAULT_DEFAULT)
-		lookup_default.update(default)
+		manifest_default = {}
+		manifest_default.update(RUG_DEFAULT_DEFAULT)
+		manifest_default.update(default)
 
-		update_rug_branch = False
+		if path in repos:
+			properties.update(repos[path])
 
-		#TODO: possibly push some of this into the wrapper
-
-		r = self.wrappers.get(path, None)
-		if r is None:
-			# Validate inputs
-			if name is None:
-				raise RugError('new repos must specify a name')
-			if remote is None:
-				raise RugError('new repos must specify a remote')
-			if self.bare:
-				if rev is None:
-					raise RugError('new repos in bare projects must specify a rev')
-				if vcs is None:
-					raise RugError('new repos in bare projects must specify a vcs')
-
-		if self.bare:
-			#Can't really test/validate anything here since there's no repo
-			#Hope the user knows what they're doing
-
-			#Add the repo
-			repos[path] = {'path': path}
-
-			revision = rev
-		else:
-			if r is None:
-				#New repository
-				#Find vcs if not specified, and create repo object
-				abs_path = os.path.join(self.dir, path)
-				if vcs is None:
-					repo = None
-					#TODO: rug needs to take priority here, as rug repos with sub-repos at '.'
-					#will look like the sub-repo vcs as well as a rug repo
-					#(but not if the path of the sub-repo is '.')
-					for (try_vcs, R) in self.vcs_class.items():
-						if R.valid_repo(abs_path):
-							repo = R(abs_path, output_buffer=self.output.spawn(path + ': '))
-							vcs = try_vcs
-							break
-					if repo is None:
-						raise RugError('unrecognized repo %s' % path)
-				else:
-					repo = self.vcs_class[vcs](abs_path, output_buffer=self.output.spawn(path + ': '))
-
-				#Add the repo
-				repos[path] = {'path': path}
-
-				#TODO: we don't know if the remote even exists yet, so can't set up all branches
-				#logic elsewhere should be able to handle this possibility (remote & bookmark branches don't exist)
-				update_rug_branch = True
-
-				#TODO: should this be required?  If not, what should the default be?
-				if use_sha is None:
-					use_sha = False
+		# 2) Repo state
+		if not self.bare:
+			abs_path = os.path.join(self.dir, path)
+			if vcs is None:
+				repo = None
+				#TODO: if repo is in the manifest, try the vcs stored there first
+				#rug needs to take priority here, as rug repos with sub-repos at '.'
+				#will look like the sub-repo vcs as well as a rug repo
+				#(but not if the path of the sub-repo is '.' - don't even consider rug in that case)
+				vcs_list = wrapper.Wrapper.vcs_class.keys()
+				vcs_list.remove('rug')
+				if path != '.':
+					vcs_list = ['rug'] + vcs_list
+				for try_vcs in vcs_list:
+					R = wrapper.Wrapper.vcs_class[try_vcs]
+					if R.valid_repo(abs_path):
+						repo = R(abs_path, output_buffer=self.output.spawn(path + ': '))
+						if try_vcs != manifest_default['vcs']:
+							properties['vcs'] = try_vcs
+						break
+				if repo is None:
+					raise RugError('unrecognized repo %s' % path)
 			else:
-				#Modify existing repo
-				repo = r.repo
+				repo = wrapper.Wrapper.vcs_class[vcs](abs_path, output_buffer=self.output.spawn(path + ': '))
+			properties['revision'] = repo.head().get_short_name()
 
-				#TODO: rethink this condition
-				if remote is not None:
-					update_rug_branch = True
+		# 3) arguments
+		if name is not None: properties['name'] = name
+		if remote is not None: properties['remote'] = remote
+		if vcs is not None: properties['vcs'] = vcs
+		if rev is not None: properties['revision'] = repo.rev_class.cast(repo, rev).get_short_name()
 
-				#If use_sha is not specified, look at existing manifest revision
-				if use_sha is None:
-					use_sha = r.valid_sha(r.revision)
-
-			#Get the rev
-			if rev is None:
-				rev = repo.head()
+		# Massage properties
+		if use_sha:
+			if not self.bare:
+				rev = repo.rev_class.cast(repo, properties['revision'])
+				properties['revision'] = rev.get_sha()
 			else:
-				rev = repo.rev_class.cast(repo, rev)
-			if use_sha:
-				rev = repo.rev_class(repo, rev.get_sha())
-			revision = rev.get_short_name()
+				raise RugError('cannot determine sha in bare repos')
 
-		#Update repo properties
+		# Verify that all properties are satisfied
 		for p in ['revision', 'name', 'remote', 'vcs']:
-			pval = locals()[p]
-			if (pval is not None) and (pval != lookup_default.get(p)):
-				repos[path][p] = pval
+			if (p not in properties) and (p not in manifest_default):
+				raise RugError('%s not specified' % p)
+
+		#TODO: do a better job deciding when to specify or not specify options
+		#that match defaults
+		repos[path] = properties
 
 		#Write the manifest and reload repos
 		manifest.write(self.manifest_filename, remotes, repos, default)
 		self.import_manifest()
 
+		#Update index branch
 		if not self.bare:
-			r = self.repos[path]
-			repo = r['repo']
-			branches = self.get_branch_names(r)
-
-			#Update rug_index
-			repo.update_ref(branches['rug_index'], rev)
-
-			#If this is a new repo, set the rug branch
-			if update_rug_branch:
-				repo.update_ref(branches['rug'], rev)
+			self.wrappers[path].update_index(properties['revision'])
 
 		self.output.append("%s added to manifest" % path)
 
 	def bind(self, message=None, recursive=True):
-		for r in self.repos.values():
+		for r in self.wrappers.values():
 			r.bind(message=message, recursive=recursive)
 			self.add(r.path, use_sha=True)
 		self.commit(message=message)
@@ -624,9 +596,6 @@ class Project(object):
 		'''Remove a repo from the manifest'''
 
 		(remotes, repos, default) = manifest.read(self.manifest_filename, apply_default=False)
-		lookup_default = {}
-		lookup_default.update(RUG_DEFAULT_DEFAULT)
-		lookup_default.update(default)
 
 		if path not in repos:
 			raise RugError('unrecognized repo %s' % path)
@@ -639,33 +608,42 @@ class Project(object):
 		self.output.append("%s removed from manifest" % path)
 
 	def commit(self, message=None, all=False, recursive=False):
+		if self.manifest_repo.dirty() and (message is None):
+			raise RugError('commit message required')
+
 		if not self.bare:
-			for r in self.repos.values():
+			#Committed revset info (for status)
+			manifest_blob_id = self.manifest_repo.get_blob_id('manifest.xml')
+			commit_repos = manifest.read_from_string(
+					self.manifest_repo.show(manifest_blob_id),
+					default_default=RUG_DEFAULT_DEFAULT
+				)[1]
+
+			for r in self.wrappers.values():
 				if all:
 					#commit if needed
 					#Note: 'recursive' without 'all' makes no sense
 					if recursive and r.dirty():
-						if message is None:
-							raise RugError('commit message required')
+						#TODO: do we need this here? sub-repos should raise their own errors if necessary
+						#if message is None:
+						#	raise RugError('commit message required')
 						r.commit(message, all=True, recursive=True)
 					#add if needed
-					status = r.status(porcelain=True, recursive=False)
+					status = r.status(commit_repos.get(r.path), porcelain=True, recursive=False)
 					if ('B' in status) or ('R' in status):
 						self.add(r.path)
-						r = self.repos[r.path]
+						r = self.wrappers[r.path]
 				branches = r.get_branch_names()
-				if repo.valid_rev(branches['rug_index']):
-					repo.update_ref(branches['rug'], branches['rug_index'])
-					repo.delete_ref(branches['rug_index'])
+				if r.repo.valid_rev(branches['rug_index']):
+					r.repo.update_ref(branches['rug'], branches['rug_index'])
+					r.repo.delete_ref(branches['rug_index'])
 
-				if repo.valid_rev(branches['bookmark_index']):
-					repo.update_ref(branches['bookmark'], branches['bookmark_index'])
-					repo.delete_ref(branches['bookmark_index'])
+				if r.repo.valid_rev(branches['bookmark_index']):
+					r.repo.update_ref(branches['bookmark'], branches['bookmark_index'])
+					r.repo.delete_ref(branches['bookmark_index'])
 
 		#TODO: what about untracked files?
 		if self.manifest_repo.dirty():
-			if message is None:
-				raise RugError('commit message required')
 			self.manifest_repo.commit(message, all=True)
 
 		self.output.append("committed revset %s to %s" % (self.revset().get_short_name(), self.dir))
@@ -697,7 +675,8 @@ class Project(object):
 			for r in commit_repos.values():
 				repo = wrapper.Wrapper(self, output_buffer=output_buffer, **r)
 				if repo.should_push():
-					if not repo.push(test=test):
+					#If !test, return will be None on success, so check specifically for False
+					if repo.push(test=test) == False:
 						success = False
 
 		#Verify that we can push to manifest repo
@@ -710,8 +689,9 @@ class Project(object):
 			manifest_refspec = manifest_revision.get_short_name()
 			manifest_force = False
 
-		if not self.manifest_repo.push(source, manifest_refspec, force=manifest_force, test=test):
-			output.append('manifest branch %s cannot be pushed to %s' % (manifest_revision.get_short_name(), source))
+		#If !test, return will be None on success, so check specifically for False
+		if self.manifest_repo.push(source, manifest_refspec, force=manifest_force, test=test) == False:
+			self.output.append('manifest branch %s cannot be pushed to %s' % (manifest_revision.get_short_name(), source))
 			success = False
 
 		if test:
@@ -723,7 +703,7 @@ class Project(object):
 	#TODO: define precisely what this should do
 	#def reset(self, optlist=[], repos=None):
 	#	if repos is None:
-	#		repos = self.repos
+	#		repos = self.wrappers
 	#	rug_branch = 'rug/%s/%s' % (self.origin(), self.revset())
 	#
 	#	if optlist.has_key('soft'):

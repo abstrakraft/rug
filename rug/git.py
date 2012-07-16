@@ -67,7 +67,7 @@ class Rev(object):
 		repo = cls.find_repo(repo_finder)
 
 		if src is None:
-			src = cls(repo, 'HEAD')
+			src = repo.head()
 
 		repo.branch_create(dst, src)
 
@@ -253,7 +253,13 @@ class Repo(object):
 		shell_cmd(GITK, args, cwd = self.dir)
 
 	def head(self):
-		return Rev(self, 'HEAD')
+		head_name = self.rev_parse('HEAD', full_name=True)
+		if head_name == 'HEAD':
+			#sha
+			return Rev(self, self.rev_parse('HEAD'))
+		else:
+			#branch
+			return Rev(self, head_name)
 
 	def dirty(self, ignore_submodules=True):
 		args = ['diff', 'HEAD']

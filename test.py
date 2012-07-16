@@ -3,7 +3,7 @@ import unittest
 import os
 import shutil
 
-test_url = 'git@github.com:abstrakraft/rug-test-project'
+test_url = 'https://github.com/abstrakraft/rug-test-project'
 test_repo = 'test_repo'
 
 class GitCloneTestCase(unittest.TestCase):
@@ -38,7 +38,7 @@ class GitRevTestCase(unittest.TestCase):
 		self.assertEqual(rug.git.Rev(repo, head.get_sha()).get_sha(), head.get_sha())
 		self.assertTrue(rug.git.Rev(repo, head.get_sha()).is_sha())
 
-class ProjectCloneTestCase(unittest.TestCase):
+class RugCloneTestCase(unittest.TestCase):
 	'''Test cases for rug.Project.clone'''
 	@classmethod
 	def tearDownClass(cls):
@@ -48,6 +48,34 @@ class ProjectCloneTestCase(unittest.TestCase):
 	def test_clone(self):
 		'''test_clone - test rug.Project.clone with vanilla arguments'''
 		repo = rug.Project.clone(test_url, test_repo)
+
+class RugInitTestCase(unittest.TestCase):
+	'''Test cases for rug.Project.init'''
+	@classmethod
+	def tearDownClass(cls):
+		if os.path.exists(test_repo):
+			shutil.rmtree(test_repo)
+
+	def test_init(self):
+		'''test_init - test rug.Project.init with vanilla arguments'''
+		repo = rug.Project.init(test_repo)
+
+class RugOpsTestCase(unittest.TestCase):
+	'''Various test cases for rug projects'''
+	@classmethod
+	def setUpClass(cls):
+		rug.Project.clone(test_url, test_repo)
+
+	@classmethod
+	def tearDownClass(cls):
+		if os.path.exists(test_repo):
+			shutil.rmtree(test_repo)
+
+	def test_add(self):
+		rug.git.Repo.clone(test_url, os.path.join(test_repo, 'test'))
+		p = rug.Project(test_repo)
+		p.add('test')
+		p.commit('test change')
 
 if __name__ == '__main__':
 	unittest.main()

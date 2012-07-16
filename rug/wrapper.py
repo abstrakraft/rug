@@ -59,11 +59,15 @@ class Wrapper(object):
 		#"Index" (manifest working tree) info is in self properties
 		#Working tree info comes from self.repo
 
+		branches = self.get_branch_names()
+
 		#Status1: commit..index diff
 		if not commit_r:
 			status1 = 'A'
 		elif commit_r['revision'] != self.revision:
 			status1 = 'R'
+		elif self.repo.valid_rev(branches['rug_index']):
+			status1 = 'B'
 		else:
 			status1 = ' '
 
@@ -71,7 +75,6 @@ class Wrapper(object):
 		if not self.repo:
 			status2 = 'D'
 		else:
-			branches = self.get_branch_names()
 			head = self.repo.head()
 			if self.repo.valid_sha(self.revision):
 				#the revision in the manifest could be an abbreviation
@@ -195,6 +198,10 @@ class Wrapper(object):
 			remote = self.remote
 		self.repo.fetch(remote)
 		self.repo.remote_set_head(remote)
+
+	def update_index(self, rev):
+		branches = self.get_branch_names()
+		self.repo.update_ref(branches['rug_index'], rev)
 
 	def bind(self, message, recursive=True):
 		if recursive and r['vcs'] == 'rug':
