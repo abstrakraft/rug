@@ -511,7 +511,7 @@ class Project(object):
 		# 2) Repo state (if it exists)
 		# 3) arguments
 
-		properties = {}
+		properties = {'path':path}
 
 		# 1) Manifest
 		# Keep defaults separate so we can avoid specifying them later
@@ -528,14 +528,22 @@ class Project(object):
 			abs_path = os.path.join(self.dir, path)
 			if vcs is None:
 				repo = None
-				#TODO: if repo is in the manifest, try the vcs stored there first
 				#rug needs to take priority here, as rug repos with sub-repos at '.'
 				#will look like the sub-repo vcs as well as a rug repo
 				#(but not if the path of the sub-repo is '.' - don't even consider rug in that case)
 				vcs_list = wrapper.Wrapper.vcs_class.keys()
-				vcs_list.remove('rug')
+				if 'rug' in vcs_list:
+					vcs_list.remove('rug')
 				if path != '.':
-					vcs_list = ['rug'] + vcs_list
+					vcs_list.insert(0,'rug')
+				#If the vcs is specified in the manifest, try that first
+				manifest_vcs = properties.get('vcs')
+				try:
+					if (vcs_list.index(manifest_vcs) > 0):
+						vcs_list.remove(manifest_vcs)
+						vcs_list.insert(0, manifest_vcs)
+				except ValueError:
+					pass
 				for try_vcs in vcs_list:
 					R = wrapper.Wrapper.vcs_class[try_vcs]
 					if R.valid_repo(abs_path):
@@ -547,7 +555,8 @@ class Project(object):
 					raise RugError('unrecognized repo %s' % path)
 			else:
 				repo = wrapper.Wrapper.vcs_class[vcs](abs_path, output_buffer=self.output.spawn(path + ': '))
-			properties['revision'] = repo.head().get_short_name()
+			if rev is None:
+				properties['revision'] = repo.head().get_short_name()
 
 		# 3) arguments
 		if name is not None: properties['name'] = name
@@ -556,6 +565,39 @@ class Project(object):
 		if rev is not None: properties['revision'] = repo.rev_class.cast(repo, rev).get_short_name()
 
 		# Massage properties
+		# Try to figure out the remote and name if they aren't specified
+		if (not self.bare) and (('remote' not in properties) or ('name' not in properties)):
+			repo_remote_found = False
+			rev = properties.get('revision', manifest_default.get('revision'))
+			if rev is not None:
+				try:
+					repo_remote = repo.config('branch.%s.remote' % rev)
+					repo_remote_url = repo.config('remote.%s.url' % repo_remote)
+					repo_remote_found = True
+				except GitError:
+					pass
+
+			if repo_remote_found:
+				#Find remote
+				if ('remote' not in properties):
+					name = properties.get('name', manifest_default.get('name'))
+					if name is not None:
+						for (k,v) in remotes.items():
+							if (repo_remote_url == remote_join(v['fetch'], name)) and (k != manifest_default.get('remote')):
+								properties['remote'] = k
+								break
+					else:
+						for (k,v) in remotes.items():
+							if repo_remote_url.startswith(v['fetch']) and (k != manifest_default.get('remote')):
+								properties['remote'] = k
+								break
+
+				#Find name
+				remote = properties.get('remote', manifest_default.get('remote'))
+				if (remote is not None) and ('name' not in properties):
+					if repo_remote_url.startswith(remotes[remote]['fetch']):
+						properties['name'] = repo_remote_url[len(remotes[remote]['fetch']):].lstrip('/')
+
 		if use_sha:
 			if not self.bare:
 				rev = repo.rev_class.cast(repo, properties['revision'])

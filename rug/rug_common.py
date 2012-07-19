@@ -5,3 +5,6 @@ RUG_DEFAULT_DEFAULT = {'revision': 'master', 'vcs': 'git'}
 RUG_CONFIG = 'config'
 RUG_REPO_CONFIG_SECTION = 'repoconfig'
 RUG_CANDIDATE_TEMPLATES = ['%s', '%s/.rug/manifest', '%s/manifest']
+
+def remote_join(remote, name):
+	return remote.rstrip('/') + '/' + name.lstrip('/')

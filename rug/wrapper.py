@@ -119,7 +119,7 @@ class Wrapper(object):
 			raise RugError('Invalid operation for bare project')
 
 		abs_path = os.path.abspath(os.path.join(self.parent.dir, self.path))
-		url = self.parent.remotes[self.remote]['fetch'] + '/' + self.name
+		url = remote_join(self.parent.remotes[self.remote]['fetch'], self.name)
 		R = self.vcs_class[self.vcs]
 
 		config = self.parent.get_rug_config()
